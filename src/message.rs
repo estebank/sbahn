@@ -10,7 +10,7 @@ pub type Buffer = Vec<u8>;
 
 #[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
 pub struct Message {
-    pub action: Action
+    pub action: Action,
 }
 
 
@@ -86,7 +86,7 @@ pub enum Action {
         timestamp: u64,
     },
     Error,
- }
+}
 
 
 #[derive(Debug, Hash, Clone, PartialEq)]
@@ -119,9 +119,9 @@ mod tests {
 
     #[test]
     fn msg_wire_encoded() {
-        let d = vec![1,2,3];
-        let p = vec![4,5,6];
-        let l = vec![7,8,9];
+        let d = vec![1, 2, 3];
+        let p = vec![4, 5, 6];
+        let l = vec![7, 8, 9];
         let v = vec![100, 101];
         {
             let m = Action::Read {
@@ -129,7 +129,7 @@ mod tests {
                     dataset: d.clone(),
                     pkey: p.clone(),
                     lkey: l.clone(),
-                }
+                },
             };
 
             let encoded = &m.to_buffer();
@@ -153,7 +153,7 @@ mod tests {
 
             let decoded = match Action::from_buffer(encoded) {
                 Ok(m) => m,
-                Err(e) => panic!()
+                Err(e) => panic!(),
             };
             assert_eq!(decoded, m);
         }

@@ -14,11 +14,7 @@ use std::thread;
 
 fn read_from_other_storage_node(target: &str, key: &Key) -> client::MessageResult {
     println!("### Forwarding to shard at {:?}.", target);
-    let content = Message {
-        action: Action::Read {
-            key: key.to_owned(),
-        }
-    };
+    let content = Message { action: Action::Read { key: key.to_owned() } };
     client::Client::send_to_node(target, content)
 }
 
@@ -28,7 +24,7 @@ fn write_to_other_storage_node(target: &str, key: &Key, value: &Value) -> client
         action: Action::Write {
             key: key.clone().to_owned(),
             value: value.clone().to_owned(),
-        }
+        },
     };
     client::Client::send_to_node(target, content)
 }
@@ -49,11 +45,11 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<String>) {
         Action::Read { key } => {
             let msg_shard = key.shard(SHARD_SIZE);
             read_from_other_storage_node(&*shards[msg_shard], &key)
-        },
+        }
         Action::Write {key, value} => {
             let msg_shard = key.shard(SHARD_SIZE);
             write_to_other_storage_node(&*shards[msg_shard], &key, &value)
-        },
+        }
         _ => panic!("Invalid operation!"),
 
     };
@@ -64,7 +60,7 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<String>) {
                 Ok(b) => stream.write(&b),
                 Err(_) => panic!("encoding error!"),
             }
-        },
+        }
         Err(_) => panic!("error!"),
     };
 }
@@ -77,9 +73,9 @@ pub fn listen(address: &str, shards: &Vec<String>) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                //println!("### Starting listener stream: {:?}", stream);
+                // println!("### Starting listener stream: {:?}", stream);
                 let shards = shards.clone();
-                thread::spawn(move|| {
+                thread::spawn(move || {
                     // connection succeeded
                     let mut stream = stream;
                     handle_client(&mut stream, &shards);

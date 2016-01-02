@@ -8,7 +8,7 @@ use bincode::SizeLimit;
 
 
 pub struct Client {
-    pub storage_nodes: Vec<String>
+    pub storage_nodes: Vec<String>,
 }
 
 
@@ -37,24 +37,24 @@ impl Client {
                         let mut stream = stream;
                         match stream.write(&content) {
                             Err(_) => return Err(Error::ConnectionError),
-                            _=> (),
+                            _ => (),
                         }
                         let mut buf = [0; BUFFER_SIZE];
                         match stream.read(&mut buf) {
                             Err(_) => return Err(Error::ConnectionError),
-                            _=> (),
+                            _ => (),
                         }
                         match decode(&buf) {
                             Ok(x) => Ok(x),
                             Err(_) => Err(Error::DecodeError),
                         }
-                    },
+                    }
                     Err(e) => {
                         println!("{:?}", e);
                         Err(Error::ConnectionError)
-                    },
+                    }
                 }
-            },
+            }
             Err(_) => Err(Error::EncodeError),
         }
     }

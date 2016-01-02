@@ -20,7 +20,7 @@ fn main() {
     let e = &shards;
     let z = e.clone();
 
-    thread::spawn(move|| {
+    thread::spawn(move || {
         let mut x = "127.0.0.1:".to_string();
         let port = (PORT_START + SHARD_SIZE + 1).to_string();
         x.push_str(&port);
@@ -34,16 +34,16 @@ fn main() {
     let x = y.iter();
 
 
-    //// Create SHARD_SIZE storage nodes.
+    // Create SHARD_SIZE storage nodes.
     for (pos, addr) in x.enumerate() {
         let addr = addr.clone().to_owned();
         let shards_clone = &shards.clone();
         let shards = shards_clone.to_owned();
-        thread::spawn(move|| {
+        thread::spawn(move || {
             println!("Storage Node @ {:?}", &addr);
             let mut sn = storage_node::StorageNode::new(addr, pos);
             &sn.listen(&shards);
         });
     }
-    loop{}
+    loop {}
 }

@@ -27,21 +27,25 @@ pub struct StorageNode {
 fn read_from_map(map: &mut DataMap, key: &Key) -> Action {
     println!("@@@ Reading {:?}", key);
     match map.get(&key) {
-        Some(value) => Action::Value {
-            key: key.clone().to_owned(),
-            value: value.to_owned(),
-        },
-        None => Action::Value {
-            key: key.clone().to_owned(),
-            value: Value::None,
-        },
+        Some(value) => {
+            Action::Value {
+                key: key.clone().to_owned(),
+                value: value.to_owned(),
+            }
+        }
+        None => {
+            Action::Value {
+                key: key.clone().to_owned(),
+                value: Value::None,
+            }
+        }
     }
 }
 
 
 #[inline]
 fn belongs_to_shard(key: &Key, shard: usize) -> u64 {
-      key.hash() % (SHARD_SIZE as u64)
+    key.hash() % (SHARD_SIZE as u64)
 }
 
 
@@ -50,11 +54,15 @@ fn get_now() -> u64 {
     let sec = now.sec;
     let nsec = now.nsec;
     // TODO: consider using a Timespec instead.
-    ((sec as u64) * 1_000_000)  + (nsec as u64 / 1000)
+    ((sec as u64) * 1_000_000) + (nsec as u64 / 1000)
 }
 
 
-pub fn handle_message(shard: usize, message: Message, map: &mut DataMap, shards: &Vec<String>) -> Action {
+pub fn handle_message(shard: usize,
+                      message: Message,
+                      map: &mut DataMap,
+                      shards: &Vec<String>)
+                      -> Action {
     match message.action {
         Action::Read { key } => {
             if belongs_to_shard(&key, shard) == shard as u64 {
@@ -62,20 +70,20 @@ pub fn handle_message(shard: usize, message: Message, map: &mut DataMap, shards:
             } else {
                 panic!("{:?} doesn't belong to this shard!", key);
             }
-        },
+        }
         Action::Write {key, value} => {
             if belongs_to_shard(&key, shard) == shard as u64 {
                 println!("@@@ Writing {:?}", value);
                 let timestamp = get_now();
 
                 let v = match value.get_content() {
-                    Some(v) => Value::Value {
-                        content: v.clone().to_owned(),
-                        timestamp: timestamp,
-                    },
-                    None => Value::Tombstone {
-                        timestamp: timestamp,
+                    Some(v) => {
+                        Value::Value {
+                            content: v.clone().to_owned(),
+                            timestamp: timestamp,
+                        }
                     }
+                    None => Value::Tombstone { timestamp: timestamp },
                 };
                 map.insert(key.clone().to_owned(), v);
                 Action::WriteAck {
@@ -86,13 +94,16 @@ pub fn handle_message(shard: usize, message: Message, map: &mut DataMap, shards:
                 println!("{:?} doesn't belong to this shard!", key);
                 Action::Error
             }
-        },
+        }
         _ => Action::Error,
     }
 }
 
 
-pub fn handle_client(shard: usize, stream: &mut TcpStream, map: &mut DataMap, shards: &Vec<String>) {
+pub fn handle_client(shard: usize,
+                     stream: &mut TcpStream,
+                     map: &mut DataMap,
+                     shards: &Vec<String>) {
     let mut buf = [0; BUFFER_SIZE];
     &stream.read(&mut buf);
     let m = match decode(&buf) {
@@ -101,8 +112,8 @@ pub fn handle_client(shard: usize, stream: &mut TcpStream, map: &mut DataMap, sh
     };
     println!("@@@ Message received: {:?}", m);
     let response: Action = handle_message(shard, m, map, &shards);
-    let encoded = encode( &Message { action: response }, SizeLimit::Infinite);
-    match  encoded {
+    let encoded = encode(&Message { action: response }, SizeLimit::Infinite);
+    match encoded {
         Ok(b) => stream.write(&b),
         Err(_) => panic!("encoding error!"),
     };
@@ -119,37 +130,37 @@ impl StorageNode {
     }
 
     pub fn listen(&mut self, shards: &Vec<String>) {
-      let shard = self.shard;
-      let address = &*self.address;
-      let listener = match TcpListener::bind(address) {
-          Ok(l) => l,
-          Err(e) => panic!("Error binding this storage node @ {:?}: {:?}", address, e),
-      };
+        let shard = self.shard;
+        let address = &*self.address;
+        let listener = match TcpListener::bind(address) {
+            Ok(l) => l,
+            Err(e) => panic!("Error binding this storage node @ {:?}: {:?}", address, e),
+        };
 
-      // accept connections and process them, spawning a new thread for each one
-      for stream in listener.incoming() {
-          match stream {
-              Ok(stream) => {
-                  //println!("@@@ Starting listener stream: {:?}", stream);
-                  let map = self.map.clone();
-                  let shards = shards.clone();
-                  thread::spawn(move|| {
-                      // connection succeeded
-                      let mut stream = stream;
-                      let mut map = map.lock().unwrap();
-                      handle_client(shard, &mut stream, &mut map, &shards);
-                  });
-              }
-              Err(e) => {
-                  println!("@@@ connection failed!: {:?}", e);
-              }
-          }
-          let map  = self.map.clone();
-          let map = map.lock().unwrap();
-          println!("@@@ Contents of shard {:?} map: {:?}", self.address, *map);
-      }
+        // accept connections and process them, spawning a new thread for each one
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    // println!("@@@ Starting listener stream: {:?}", stream);
+                    let map = self.map.clone();
+                    let shards = shards.clone();
+                    thread::spawn(move || {
+                        // connection succeeded
+                        let mut stream = stream;
+                        let mut map = map.lock().unwrap();
+                        handle_client(shard, &mut stream, &mut map, &shards);
+                    });
+                }
+                Err(e) => {
+                    println!("@@@ connection failed!: {:?}", e);
+                }
+            }
+            let map = self.map.clone();
+            let map = map.lock().unwrap();
+            println!("@@@ Contents of shard {:?} map: {:?}", self.address, *map);
+        }
 
-      // close the socket server
-      drop(listener);
+        // close the socket server
+        drop(listener);
     }
 }
