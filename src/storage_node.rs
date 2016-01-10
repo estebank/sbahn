@@ -1,17 +1,13 @@
 use bincode::SizeLimit;
 use bincode::rustc_serialize::{encode, decode};
-use client;
 use constants::BUFFER_SIZE;
-use constants::SHARD_SIZE;
-use message::{Action, Key, Value, Message};
+use message::{Key, Value, InternodeRequest, InternodeResponse};
 use std::collections::HashMap;
-use std::hash::{Hash, SipHasher, Hasher};
 use std::io::Read;
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use time;
 
 
 pub type DataMap = HashMap<Key, Value>;
@@ -24,17 +20,17 @@ pub struct StorageNode {
 }
 
 
-fn read_from_map(map: &mut DataMap, key: &Key) -> Action {
+fn read_from_map(map: &mut DataMap, key: &Key) -> InternodeResponse {
     println!("@@@ Reading {:?}", key);
     match map.get(&key) {
         Some(value) => {
-            Action::Value {
+            InternodeResponse::Value {
                 key: key.clone().to_owned(),
                 value: value.to_owned(),
             }
         }
         None => {
-            Action::Value {
+            InternodeResponse::Value {
                 key: key.clone().to_owned(),
                 value: Value::None,
             }
@@ -43,59 +39,58 @@ fn read_from_map(map: &mut DataMap, key: &Key) -> Action {
 }
 
 
-#[inline]
-fn belongs_to_shard(key: &Key, shard: usize) -> u64 {
-    key.hash() % (SHARD_SIZE as u64)
-}
-
-
-fn get_now() -> u64 {
-    let now = time::get_time();
-    let sec = now.sec;
-    let nsec = now.nsec;
-    // TODO: consider using a Timespec instead.
-    ((sec as u64) * 1_000_000) + (nsec as u64 / 1000)
-}
-
-
 pub fn handle_message(shard: usize,
-                      message: Message,
+                      message: InternodeRequest,
                       map: &mut DataMap,
-                      shards: &Vec<String>)
-                      -> Action {
-    match message.action {
-        Action::Read { key } => {
-            if belongs_to_shard(&key, shard) == shard as u64 {
+                      shards: &Vec<Vec<String>>)
+                      -> InternodeResponse {
+    match message {
+        InternodeRequest::Read {key} => {
+            if key.shard(shards.len()) == shard {
                 read_from_map(map, &key)
             } else {
-                panic!("{:?} doesn't belong to this shard!", key);
+                let error = format!("{:?} doesn't belong to this shard!", key);
+                println!("{}", error);
+                InternodeResponse::Error {
+                    key: key.clone().to_owned(),
+                    message: error,
+                }
             }
         }
-        Action::Write {key, value} => {
-            if belongs_to_shard(&key, shard) == shard as u64 {
-                println!("@@@ Writing {:?}", value);
-                let timestamp = get_now();
+        InternodeRequest::Write {key, value} => {
+            if key.shard(shards.len()) == shard {
+                println!("@@@ Writing {:?} -> {:?}", key, value);
 
-                let v = match value.get_content() {
-                    Some(v) => {
-                        Value::Value {
-                            content: v.clone().to_owned(),
-                            timestamp: timestamp,
+                println!("        {:?} {:?}", key, value);
+
+                match value {
+                    Value::None => {
+                        let error = format!("Write operation at {:?} with None. This should have \
+                                             been a Tombstone",
+                                            key);
+                        println!("{}", error);
+                        InternodeResponse::Error {
+                            key: key.clone().to_owned(),
+                            message: error,
                         }
                     }
-                    None => Value::Tombstone { timestamp: timestamp },
-                };
-                map.insert(key.clone().to_owned(), v);
-                Action::WriteAck {
-                    key: key.to_owned(),
-                    timestamp: timestamp,
+                    Value::Value {timestamp, ..} | Value::Tombstone {timestamp} => {
+                        map.insert(key.clone().to_owned(), value.clone().to_owned());
+                        InternodeResponse::WriteAck {
+                            key: key.to_owned(),
+                            timestamp: timestamp.clone().to_owned(),
+                        }
+                    }
                 }
             } else {
-                println!("{:?} doesn't belong to this shard!", key);
-                Action::Error
+                let error = format!("{:?} doesn't belong to this shard!", key);
+                println!("{}", error);
+                InternodeResponse::Error {
+                    key: key.clone().to_owned(),
+                    message: error,
+                }
             }
         }
-        _ => Action::Error,
     }
 }
 
@@ -103,25 +98,26 @@ pub fn handle_message(shard: usize,
 pub fn handle_client(shard: usize,
                      stream: &mut TcpStream,
                      map: &mut DataMap,
-                     shards: &Vec<String>) {
+                     shards: &Vec<Vec<String>>) {
     let mut buf = [0; BUFFER_SIZE];
     &stream.read(&mut buf);
-    let m = match decode(&buf) {
+    let m: InternodeRequest = match decode(&buf) {
         Ok(m) => m,
-        Err(_) => panic!(),
+        Err(_) => panic!("decoding error!"),
     };
+
     println!("@@@ Message received: {:?}", m);
-    let response: Action = handle_message(shard, m, map, &shards);
-    let encoded = encode(&Message { action: response }, SizeLimit::Infinite);
-    match encoded {
+    let response: InternodeResponse = handle_message(shard, m, map, &shards);
+    let encoded = encode(&response, SizeLimit::Infinite);
+    let _ = match encoded {
         Ok(b) => stream.write(&b),
-        Err(_) => panic!("encoding error!"),
+        Err(_) => panic!("encoding error! {:?}", response),
     };
 }
 
 impl StorageNode {
     pub fn new(local_address: String, shard_number: usize) -> StorageNode {
-        let mut map = Arc::new(Mutex::new(DataMap::new()));
+        let map = Arc::new(Mutex::new(DataMap::new()));
         StorageNode {
             shard: shard_number,
             address: local_address,
@@ -129,7 +125,7 @@ impl StorageNode {
         }
     }
 
-    pub fn listen(&mut self, shards: &Vec<String>) {
+    pub fn listen(&mut self, shards: &Vec<Vec<String>>) {
         let shard = self.shard;
         let address = &*self.address;
         let listener = match TcpListener::bind(address) {
@@ -157,7 +153,10 @@ impl StorageNode {
             }
             let map = self.map.clone();
             let map = map.lock().unwrap();
-            println!("@@@ Contents of shard {:?} map: {:?}", self.address, *map);
+            println!("@@@ Contents of shard {:?} @ {:?} map: {:?}",
+                     self.shard,
+                     self.address,
+                     *map);
         }
 
         // close the socket server

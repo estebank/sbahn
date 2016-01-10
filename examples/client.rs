@@ -4,7 +4,7 @@ use sbahn::message;
 
 
 fn main() {
-    let target = "127.0.0.1:1035".to_string();
+    let target = "127.0.0.1:1100".to_string();
     let key = message::Key {
         dataset: vec![1, 2, 3],
         pkey: vec![4, 5, 6],
@@ -18,15 +18,11 @@ fn main() {
     let messages = vec![
         message::Action::Write {
             key: key.clone().to_owned(),
-            value: message::Value::Unpersisted {
-                content: vec![1],
-            }
+            content: vec![1],
         },
         message::Action::Write {
             key: key.clone().to_owned(),
-            value: message::Value::Unpersisted {
-                content: vec![2],
-            }
+            content: vec![2],
         },
         message::Action::Read {
             key: key.clone().to_owned(),
@@ -36,9 +32,7 @@ fn main() {
         },
         message::Action::Write {
             key: key2.clone().to_owned(),
-            value: message::Value::Unpersisted {
-                content: vec![101],
-            }
+            content: vec![101],
         },
         message::Action::Read {
             key: key2.clone().to_owned(),
@@ -49,7 +43,10 @@ fn main() {
 
     for m in messages {
         // let content: Vec<u8> = encode(&m, bincode::SizeLimit::Infinite).unwrap();
-        let content = message::Message { action: m };
+        let content = message::Request {
+            action: m,
+            consistency: message::Consistency::Latest,
+        };
 
         let r = client.send(content);
         println!("Response: {:?}", r);
