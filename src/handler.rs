@@ -21,7 +21,7 @@ fn get_now() -> u64 {
 
 fn read_quorum(responses: &mut Vec<result::Result<InternodeResponse, Error>>)
                -> client::MessageResult {
-    println!("    Reading quorum");
+    debug!("Reading quorum");
 
     let message = responses.pop().unwrap().ok().unwrap().to_response();
 
@@ -70,7 +70,7 @@ fn write(shards: &Vec<String>,
 fn read_from_other_storage_node(target: &str,
                                 key: &Key)
                                 -> result::Result<InternodeResponse, Error> {
-    println!("### Forwarding to shard at {:?}.", target);
+    debug!("Forwarding read request for {:?} to shard at {:?}.", key, target);
     let content = InternodeRequest::Read { key: key.to_owned() };
     client::Client::send_internode(target, &content)
 }
@@ -79,7 +79,7 @@ fn write_to_other_storage_node(target: &str,
                                key: &Key,
                                content: &Buffer)
                                -> result::Result<InternodeResponse, Error> {
-    println!("### Forwarding to shard at {:?}.", target);
+    debug!("Forwarding write request for {:?} to shard at {:?}.", key, target);
     let request = InternodeRequest::Write {
         key: key.clone().to_owned(),
         value: Value::Value {
@@ -100,7 +100,7 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
         Err(_) => panic!("Message decoding error!"),
     };
 
-    println!("### Message received: {:?}", m);
+    debug!("Message received: {:?}", m);
 
     let r = match m.action {
         Action::Read { key } => {
@@ -109,7 +109,6 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
         }
         Action::Write {key, content} => {
             let msg_shard = key.shard(shards.len());
-            println!("                {:?} {:?}", key, content);
             write(&shards[msg_shard], &key, &content, &m.consistency)
         }
     };
@@ -133,7 +132,7 @@ pub fn listen(address: &str, shards: &Vec<Vec<String>>) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                // println!("### Starting listener stream: {:?}", stream);
+                debug!("Starting listener stream: {:?}", stream);
                 let shards = shards.clone();
                 thread::spawn(move || {
                     // connection succeeded
@@ -142,7 +141,7 @@ pub fn listen(address: &str, shards: &Vec<Vec<String>>) {
                 });
             }
             Err(e) => {
-                println!("### connection failed!: {:?}", e);
+                error!("connection failed!: {:?}", e);
             }
         }
     }

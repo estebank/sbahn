@@ -21,7 +21,7 @@ pub struct StorageNode {
 
 
 fn read_from_map(map: &mut DataMap, key: &Key) -> InternodeResponse {
-    println!("@@@ Reading {:?}", key);
+    debug!("Reading {:?}", key);
     match map.get(&key) {
         Some(value) => {
             InternodeResponse::Value {
@@ -50,7 +50,7 @@ pub fn handle_message(shard: usize,
                 read_from_map(map, &key)
             } else {
                 let error = format!("{:?} doesn't belong to this shard!", key);
-                println!("{}", error);
+                error!("{}", error);
                 InternodeResponse::Error {
                     key: key.clone().to_owned(),
                     message: error,
@@ -59,16 +59,14 @@ pub fn handle_message(shard: usize,
         }
         InternodeRequest::Write {key, value} => {
             if key.shard(shards.len()) == shard {
-                println!("@@@ Writing {:?} -> {:?}", key, value);
-
-                println!("        {:?} {:?}", key, value);
+                debug!("Writing {:?} -> {:?}", key, value);
 
                 match value {
                     Value::None => {
                         let error = format!("Write operation at {:?} with None. This should have \
                                              been a Tombstone",
                                             key);
-                        println!("{}", error);
+                        error!("{}", error);
                         InternodeResponse::Error {
                             key: key.clone().to_owned(),
                             message: error,
@@ -84,7 +82,7 @@ pub fn handle_message(shard: usize,
                 }
             } else {
                 let error = format!("{:?} doesn't belong to this shard!", key);
-                println!("{}", error);
+                error!("{}", error);
                 InternodeResponse::Error {
                     key: key.clone().to_owned(),
                     message: error,
@@ -106,7 +104,7 @@ pub fn handle_client(shard: usize,
         Err(_) => panic!("decoding error!"),
     };
 
-    println!("@@@ Message received: {:?}", m);
+    debug!("Message received: {:?}", m);
     let response: InternodeResponse = handle_message(shard, m, map, &shards);
     let encoded = encode(&response, SizeLimit::Infinite);
     let _ = match encoded {
@@ -137,7 +135,7 @@ impl StorageNode {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    // println!("@@@ Starting listener stream: {:?}", stream);
+                    debug!("Starting listener stream: {:?}", stream);
                     let map = self.map.clone();
                     let shards = shards.clone();
                     thread::spawn(move || {
@@ -148,12 +146,12 @@ impl StorageNode {
                     });
                 }
                 Err(e) => {
-                    println!("@@@ connection failed!: {:?}", e);
+                    error!("connection failed!: {:?}", e);
                 }
             }
             let map = self.map.clone();
             let map = map.lock().unwrap();
-            println!("@@@ Contents of shard {:?} @ {:?} map: {:?}",
+            debug!("Contents of shard {:?} @ {:?} map: {:?}",
                      self.shard,
                      self.address,
                      *map);

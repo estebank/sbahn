@@ -1,9 +1,15 @@
 extern crate sbahn;
+#[macro_use]
+extern crate log;
+extern crate env_logger;
+
 use sbahn::client;
 use sbahn::message;
 
 
 fn main() {
+    let _ = env_logger::init();
+
     let target = "127.0.0.1:1100".to_string();
     let key = message::Key {
         dataset: vec![1, 2, 3],

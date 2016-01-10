@@ -23,7 +23,7 @@ impl Client {
     }
 
     pub fn send_to_node(target: &str, message: &Request) -> MessageResult {
-        println!("    send_to_node: {:?}", message);
+        debug!("sending message {:?} to node {:?}", message, target);
         match encode(&message, SizeLimit::Infinite) {
             Ok(content) => {
                 match Self::send_buffer(target, &content) {
@@ -43,7 +43,7 @@ impl Client {
     pub fn send_internode(target: &str,
                           message: &InternodeRequest)
                           -> result::Result<InternodeResponse, Error> {
-        println!("    send_to_node: {:?}", message);
+        debug!("Sending internode message: {:?}", message);
         match encode(&message, SizeLimit::Infinite) {
             Ok(content) => {
                 match Self::send_buffer(target, &content) {
@@ -61,7 +61,7 @@ impl Client {
     }
 
     pub fn send_buffer(target: &str, message: &Vec<u8>) -> result::Result<Vec<u8>, Error> {
-        println!("    {:?}", message);
+        debug!("Buffer being sent: {:?}", message);
         match TcpStream::connect(target) {
             Ok(stream) => {
                 let mut stream = stream;
@@ -77,7 +77,7 @@ impl Client {
                 Ok(buf.iter().cloned().collect())
             }
             Err(e) => {
-                println!("{:?}", e);
+                error!("{:?}", e);
                 Err(Error::ConnectionError)
             }
         }
