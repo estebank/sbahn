@@ -84,16 +84,15 @@ fn read(shards: &Vec<String>, key: &Key, consistency: &Consistency) -> client::M
 
 fn write(shards: &Vec<String>,
          key: &Key,
-         content: &Buffer,
+         value: &Value,
          consistency: &Consistency)
          -> client::MessageResult {
     let mut responses: Vec<result::Result<InternodeResponse, Error>> = vec![];
-    let timestamp = get_now();
     for shard in shards {
-        let response = write_to_other_storage_node(&*shard, &key, &content, timestamp);
+        let response = write_to_other_storage_node(&*shard, &key, &value);
         debug!("Write response for {:?}, {:?} @ Shard {:?}: {:?}",
                key,
-               timestamp,
+               value,
                shard,
                response);
         responses.push(response);
@@ -145,18 +144,14 @@ fn read_from_other_storage_node(target: &str,
 
 fn write_to_other_storage_node(target: &str,
                                key: &Key,
-                               content: &Buffer,
-                               timestamp: u64)
+                               value: &Value)
                                -> result::Result<InternodeResponse, Error> {
     debug!("Forwarding write request for {:?} to shard at {:?}.",
            key,
            target);
     let request = InternodeRequest::Write {
         key: key.clone().to_owned(),
-        value: Value::Value {
-            content: content.clone().to_owned(),
-            timestamp: timestamp,
-        },
+        value: value.clone().to_owned(),
     };
     client::Client::send_internode(target, &request)
 }
@@ -173,18 +168,26 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
 
     debug!("Message received: {:?}", m);
 
+    let timestamp = get_now();
     let r = match m.action {
         Action::Read { key } => {
             let msg_shard = key.shard(shards.len());
             read(&shards[msg_shard], &key, &m.consistency)
         }
         Action::Write {key, content} => {
+            let value = Value::Value {
+                content: content.clone().to_owned(),
+                timestamp: timestamp,
+            };
             let msg_shard = key.shard(shards.len());
-            write(&shards[msg_shard], &key, &content, &m.consistency)
+            write(&shards[msg_shard], &key, &value, &m.consistency)
         }
-        Action::Delete {key, content} => {
+        Action::Delete {key} => {
+            let value = Value::Tombstone {
+                timestamp: timestamp,
+            };
             let msg_shard = key.shard(shards.len());
-            write(&shards[msg_shard], &key, &content, &m.consistency)
+            write(&shards[msg_shard], &key, &value, &m.consistency)
         }
     };
     debug!("Response to be sent: {:?}", r);

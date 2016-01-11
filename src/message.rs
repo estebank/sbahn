@@ -1,6 +1,4 @@
 use std::result;
-use bincode::SizeLimit;
-use bincode::rustc_serialize::{encode, decode};
 use std::hash::{Hash, SipHasher, Hasher};
 
 
