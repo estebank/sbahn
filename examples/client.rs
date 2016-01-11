@@ -43,6 +43,9 @@ fn main() {
         message::Action::Read {
             key: key2.clone().to_owned(),
         },
+        message::Action::Delete {
+            key: key.clone().to_owned(),
+        },
     ];
 
     let client = client::Client { storage_nodes: vec![target] };

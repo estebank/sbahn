@@ -82,6 +82,20 @@ pub enum InternodeResponse {
 }
 
 impl InternodeResponse {
+    pub fn get_timestamp(&self) -> Option<u64> {
+        match self {
+            &InternodeResponse::Value {ref value, ..} => {
+                match *value {
+                    Value::None => None,
+                    Value::Value {timestamp, ..} => Some(timestamp),
+                    Value::Tombstone {timestamp} => Some(timestamp),
+                }
+            }
+            &InternodeResponse::WriteAck {ref timestamp, ..} => Some(*timestamp),
+            &InternodeResponse::Error {..} => None,
+        }
+    }
+
     pub fn to_response(self) -> Response {
         match self {
             InternodeResponse::Value {key, value} => {
@@ -127,15 +141,16 @@ pub enum Action {
         key: Key,
         content: Buffer,
     },
+    Delete {
+        key: Key,
+    }
 }
 
 
 #[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
 pub enum Consistency {
     One,
-    Quorum,
     Latest,
-    All,
 }
 
 
@@ -147,20 +162,6 @@ pub enum Error {
 }
 
 pub type Result<T> = result::Result<T, Error>;
-
-
-impl Action {
-    pub fn from_buffer(buffer: &Buffer) -> Result<Action> {
-        match decode(&buffer) {
-            Ok(m) => Ok(m),
-            Err(_) => Err(Error::DecodeError),
-        }
-    }
-
-    pub fn to_buffer(&self) -> Buffer {
-        encode(&self, SizeLimit::Infinite).unwrap()
-    }
-}
 
 
 #[cfg(test)]

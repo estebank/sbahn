@@ -152,9 +152,9 @@ impl StorageNode {
             let map = self.map.clone();
             let map = map.lock().unwrap();
             debug!("Contents of shard {:?} @ {:?} map: {:?}",
-                     self.shard,
-                     self.address,
-                     *map);
+                   self.shard,
+                   self.address,
+                   *map);
         }
 
         // close the socket server
