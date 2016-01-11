@@ -183,9 +183,7 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
             write(&shards[msg_shard], &key, &value, &m.consistency)
         }
         Action::Delete {key} => {
-            let value = Value::Tombstone {
-                timestamp: timestamp,
-            };
+            let value = Value::Tombstone { timestamp: timestamp };
             let msg_shard = key.shard(shards.len());
             write(&shards[msg_shard], &key, &value, &m.consistency)
         }

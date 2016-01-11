@@ -141,7 +141,7 @@ pub enum Action {
     },
     Delete {
         key: Key,
-    }
+    },
 }
 
 
