@@ -12,6 +12,20 @@ pub struct Request {
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
+pub enum Action {
+    Read {
+        key: Key,
+    },
+    Write {
+        key: Key,
+        content: Buffer,
+    },
+    Delete {
+        key: Key,
+    },
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
 pub struct ResponseMessage {
     pub message: Response,
     pub consistency: Consistency,
@@ -50,6 +64,18 @@ impl Key {
     pub fn shard(&self, shard_count: usize) -> usize {
         (self.hash() % (shard_count as u64)) as usize
     }
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
+pub enum Value {
+    None,
+    Value {
+        content: Buffer,
+        timestamp: u64,
+    },
+    Tombstone {
+        timestamp: u64,
+    },
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
@@ -119,38 +145,10 @@ impl InternodeResponse {
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
-pub enum Value {
-    None,
-    Value {
-        content: Buffer,
-        timestamp: u64,
-    },
-    Tombstone {
-        timestamp: u64,
-    },
-}
-
-#[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
-pub enum Action {
-    Read {
-        key: Key,
-    },
-    Write {
-        key: Key,
-        content: Buffer,
-    },
-    Delete {
-        key: Key,
-    },
-}
-
-
-#[derive(Debug, Hash, Clone, PartialEq, RustcEncodable, RustcDecodable)]
 pub enum Consistency {
     One,
     Latest,
 }
-
 
 #[derive(Debug, Hash, Clone, PartialEq)]
 pub enum Error {
@@ -167,44 +165,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn msg_wire_encoded() {
-        let d = vec![1, 2, 3];
-        let p = vec![4, 5, 6];
-        let l = vec![7, 8, 9];
-        let v = vec![100, 101];
-        {
-            let m = Action::Read {
-                key: Key {
-                    dataset: d.clone(),
-                    pkey: p.clone(),
-                    lkey: l.clone(),
-                },
-            };
-
-            let encoded = &m.to_buffer();
-
-            let decoded = match Action::from_buffer(encoded) {
-                Ok(m) => m,
-                Err(e) => panic!(),
-            };
-            assert_eq!(decoded, m);
-        }
-        {
-            let m = Action::Write {
-                key: Key {
-                    dataset: d.clone(),
-                    pkey: p.clone(),
-                    lkey: l.clone(),
-                },
-                value: Value::Unpersisted(v.clone()),
-            };
-            let encoded = &m.to_buffer();
-
-            let decoded = match Action::from_buffer(encoded) {
-                Ok(m) => m,
-                Err(e) => panic!(),
-            };
-            assert_eq!(decoded, m);
-        }
+    fn key_hash() {
+        let key = Key {
+            dataset: vec![1],
+            pkey: vec![1],
+            lkey: vec![1],
+        };
+        assert_eq!(8934463522374858327, key.hash());
+        assert_eq!(0, key.shard(1 as usize));
     }
 }

@@ -34,12 +34,11 @@ fn main() {
     for (pos, addresses) in x.enumerate() {
         for addr in addresses {
             let addr = addr.clone().to_owned();
-            let shards_clone = &shards.clone();
-            let shards = shards_clone.to_owned();
+            let shard_count = shards.len();
             thread::spawn(move || {
                 println!("Storage Node {:?} @ {:?}", &pos, &addr);
-                let mut sn = storage_node::StorageNode::new(addr, pos);
-                &sn.listen(&shards);
+                let mut sn = storage_node::StorageNode::new(addr, pos, shard_count);
+                &sn.listen();
             });
         }
     }

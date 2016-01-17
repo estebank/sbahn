@@ -15,6 +15,7 @@ pub type DataMap = HashMap<Key, Value>;
 
 pub struct StorageNode {
     pub shard: usize,
+    pub shard_count: usize,
     pub address: String,
     pub map: Arc<Mutex<DataMap>>,
 }
@@ -39,32 +40,47 @@ fn read_from_map(map: &mut DataMap, key: &Key) -> InternodeResponse {
 }
 
 
+fn execute_for_this_shard<F>(key: &Key,
+                             shard: usize,
+                             shard_count: usize,
+                             map: &mut DataMap,
+                             f: F) -> InternodeResponse
+                             where F: Fn(&mut DataMap) -> InternodeResponse {
+    let mut map = map;
+    if key.shard(shard_count) == shard {
+        f(&mut map)
+    } else {
+        let error = format!("{:?} doesn't belong to this shard!", key);
+        error!("{}", error);
+        InternodeResponse::Error {
+            key: key.clone().to_owned(),
+            message: error,
+        }
+    }
+}
+
 pub fn handle_message(shard: usize,
                       message: InternodeRequest,
                       map: &mut DataMap,
-                      shards: &Vec<Vec<String>>)
+                      shard_count: usize)
                       -> InternodeResponse {
+    let mut map = map;
     match message {
         InternodeRequest::Read {key} => {
-            if key.shard(shards.len()) == shard {
-                read_from_map(map, &key)
-            } else {
-                let error = format!("{:?} doesn't belong to this shard!", key);
-                error!("{}", error);
-                InternodeResponse::Error {
-                    key: key.clone().to_owned(),
-                    message: error,
-                }
-            }
+            execute_for_this_shard(&key, shard, shard_count, &mut map, |map| {
+                debug!("Executing read_from_map {:?}", map);
+                let mut map = map;
+                read_from_map(&mut map, &key)
+            })
         }
         InternodeRequest::Write {key, value} => {
-            if key.shard(shards.len()) == shard {
+            execute_for_this_shard(&key, shard, shard_count, &mut map, |map| {
                 debug!("Writing {:?} -> {:?}", key, value);
 
                 match value {
                     Value::None => {
-                        let error = format!("Write operation at {:?} with None. This should have \
-                                             been a Tombstone",
+                        let error = format!("Write operation at {:?} with None.\
+                                             This should have been a Tombstone",
                                             key);
                         error!("{}", error);
                         InternodeResponse::Error {
@@ -80,14 +96,7 @@ pub fn handle_message(shard: usize,
                         }
                     }
                 }
-            } else {
-                let error = format!("{:?} doesn't belong to this shard!", key);
-                error!("{}", error);
-                InternodeResponse::Error {
-                    key: key.clone().to_owned(),
-                    message: error,
-                }
-            }
+            })
         }
     }
 }
@@ -96,7 +105,7 @@ pub fn handle_message(shard: usize,
 pub fn handle_client(shard: usize,
                      stream: &mut TcpStream,
                      map: &mut DataMap,
-                     shards: &Vec<Vec<String>>) {
+                     shard_count: usize) {
     let mut buf = [0; BUFFER_SIZE];
     &stream.read(&mut buf);
     let m: InternodeRequest = match decode(&buf) {
@@ -105,7 +114,7 @@ pub fn handle_client(shard: usize,
     };
 
     debug!("Message received: {:?}", m);
-    let response: InternodeResponse = handle_message(shard, m, map, &shards);
+    let response: InternodeResponse = handle_message(shard, m, map, shard_count);
     let encoded = encode(&response, SizeLimit::Infinite);
     let _ = match encoded {
         Ok(b) => stream.write(&b),
@@ -114,16 +123,20 @@ pub fn handle_client(shard: usize,
 }
 
 impl StorageNode {
-    pub fn new(local_address: String, shard_number: usize) -> StorageNode {
+    pub fn new(local_address: String,
+               shard_number: usize,
+               shard_count: usize)
+               -> StorageNode {
         let map = Arc::new(Mutex::new(DataMap::new()));
         StorageNode {
             shard: shard_number,
+            shard_count: shard_count,
             address: local_address,
             map: map,
         }
     }
 
-    pub fn listen(&mut self, shards: &Vec<Vec<String>>) {
+    pub fn listen(&mut self) {
         let shard = self.shard;
         let address = &*self.address;
         let listener = match TcpListener::bind(address) {
@@ -137,12 +150,12 @@ impl StorageNode {
                 Ok(stream) => {
                     debug!("Starting listener stream: {:?}", stream);
                     let map = self.map.clone();
-                    let shards = shards.clone();
+                    let shard_count = self.shard_count;
                     thread::spawn(move || {
                         // connection succeeded
                         let mut stream = stream;
                         let mut map = map.lock().unwrap();
-                        handle_client(shard, &mut stream, &mut map, &shards);
+                        handle_client(shard, &mut stream, &mut map, shard_count);
                     });
                 }
                 Err(e) => {

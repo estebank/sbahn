@@ -6,7 +6,6 @@ use message::*;
 use std::io::Read;
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
-use std::result;
 use std::thread;
 use time;
 
@@ -87,7 +86,7 @@ fn write(shards: &Vec<String>,
          value: &Value,
          consistency: &Consistency)
          -> client::MessageResult {
-    let mut responses: Vec<result::Result<InternodeResponse, Error>> = vec![];
+    let mut responses: Vec<Result<InternodeResponse>> = vec![];
     for shard in shards {
         let response = write_to_other_storage_node(&*shard, &key, &value);
         debug!("Write response for {:?}, {:?} @ Shard {:?}: {:?}",
@@ -109,7 +108,7 @@ fn write(shards: &Vec<String>,
                 match response {
                     InternodeResponse::WriteAck {key, timestamp} => {
                         write_count += 1;
-                        if write_count >= shards.len() / 2 {
+                        if write_count >= (shards.len() / 2) + 1 {
                             debug!("Successfull write to mayority of shards for {:?}", key);
                             message = Response::WriteAck {
                                 key: key,
@@ -134,7 +133,7 @@ fn write(shards: &Vec<String>,
 
 fn read_from_other_storage_node(target: &str,
                                 key: &Key)
-                                -> result::Result<InternodeResponse, Error> {
+                                -> Result<InternodeResponse> {
     debug!("Forwarding read request for {:?} to shard at {:?}.",
            key,
            target);
@@ -145,7 +144,7 @@ fn read_from_other_storage_node(target: &str,
 fn write_to_other_storage_node(target: &str,
                                key: &Key,
                                value: &Value)
-                               -> result::Result<InternodeResponse, Error> {
+                               -> Result<InternodeResponse> {
     debug!("Forwarding write request for {:?} to shard at {:?}.",
            key,
            target);

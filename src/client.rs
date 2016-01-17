@@ -1,8 +1,7 @@
 use std::io::prelude::*;
-use std::result;
 use std::net::TcpStream;
 use constants::BUFFER_SIZE;
-use message::{Error, Request, ResponseMessage, InternodeRequest, InternodeResponse};
+use message::{Error, Request, Result, ResponseMessage, InternodeRequest, InternodeResponse};
 use bincode::rustc_serialize::{encode, decode};
 use bincode::SizeLimit;
 
@@ -12,8 +11,8 @@ pub struct Client {
 }
 
 
-pub type MessageResult = result::Result<ResponseMessage, Error>;
-pub type InternodeResult = result::Result<InternodeResponse, Error>;
+pub type MessageResult = Result<ResponseMessage>;
+pub type InternodeResult = Result<InternodeResponse>;
 
 
 impl Client {
@@ -42,7 +41,7 @@ impl Client {
 
     pub fn send_internode(target: &str,
                           message: &InternodeRequest)
-                          -> result::Result<InternodeResponse, Error> {
+                          -> Result<InternodeResponse> {
         debug!("Sending internode message: {:?}", message);
         match encode(&message, SizeLimit::Infinite) {
             Ok(content) => {
@@ -53,14 +52,14 @@ impl Client {
                             Err(_) => Err(Error::DecodeError),
                         }
                     }
-                    Err(_) => Err(Error::DecodeError),
+                    Err(e) => Err(e),
                 }
             }
             Err(_) => Err(Error::EncodeError),
         }
     }
 
-    pub fn send_buffer(target: &str, message: &Vec<u8>) -> result::Result<Vec<u8>, Error> {
+    pub fn send_buffer(target: &str, message: &Vec<u8>) -> Result<Vec<u8>> {
         debug!("Buffer being sent: {:?}", message);
         match TcpStream::connect(target) {
             Ok(stream) => {
