@@ -6,7 +6,8 @@ authors = ["Esteban Küber <esteban@kuber.com.ar>"]
 [dependencies]
 bincode = "*"
 env_logger = "*"
+eventual = "*"
 log = "*"
+rand = "0.3"
 rustc-serialize = "*"
 time = "*"
-rand = "0.3"

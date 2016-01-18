@@ -44,8 +44,10 @@ fn execute_for_this_shard<F>(key: &Key,
                              shard: usize,
                              shard_count: usize,
                              map: &mut DataMap,
-                             f: F) -> InternodeResponse
-                             where F: Fn(&mut DataMap) -> InternodeResponse {
+                             f: F)
+                             -> InternodeResponse
+    where F: Fn(&mut DataMap) -> InternodeResponse
+{
     let mut map = map;
     if key.shard(shard_count) == shard {
         f(&mut map)
@@ -79,8 +81,8 @@ pub fn handle_message(shard: usize,
 
                 match value {
                     Value::None => {
-                        let error = format!("Write operation at {:?} with None.\
-                                             This should have been a Tombstone",
+                        let error = format!("Write operation at {:?} with None.This should have \
+                                             been a Tombstone",
                                             key);
                         error!("{}", error);
                         InternodeResponse::Error {
@@ -102,10 +104,7 @@ pub fn handle_message(shard: usize,
 }
 
 
-pub fn handle_client(shard: usize,
-                     stream: &mut TcpStream,
-                     map: &mut DataMap,
-                     shard_count: usize) {
+pub fn handle_client(shard: usize, stream: &mut TcpStream, map: &mut DataMap, shard_count: usize) {
     let mut buf = [0; BUFFER_SIZE];
     &stream.read(&mut buf);
     let m: InternodeRequest = match decode(&buf) {
@@ -123,10 +122,7 @@ pub fn handle_client(shard: usize,
 }
 
 impl StorageNode {
-    pub fn new(local_address: String,
-               shard_number: usize,
-               shard_count: usize)
-               -> StorageNode {
+    pub fn new(local_address: String, shard_number: usize, shard_count: usize) -> StorageNode {
         let map = Arc::new(Mutex::new(DataMap::new()));
         StorageNode {
             shard: shard_number,

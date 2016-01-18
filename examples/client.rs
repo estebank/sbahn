@@ -1,10 +1,12 @@
 extern crate sbahn;
+extern crate eventual;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
 
 use sbahn::client;
 use sbahn::message;
+use eventual::*;
 
 
 fn main() {
@@ -43,9 +45,12 @@ fn main() {
         message::Action::Read {
             key: key2.clone().to_owned(),
         },
-        //message::Action::Delete {
-        //    key: key.clone().to_owned(),
-        //},
+        message::Action::Delete {
+            key: key.clone().to_owned(),
+        },
+        message::Action::Read {
+            key: key2.clone().to_owned(),
+        },
     ];
 
     let client = client::Client { storage_nodes: vec![target] };
@@ -56,7 +61,7 @@ fn main() {
             consistency: message::Consistency::Latest,
         };
 
-        let r = client.send(content);
+        let r = client.send(content).await().unwrap();
         println!("Response: {:?}", r);
     }
 }

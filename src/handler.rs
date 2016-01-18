@@ -2,7 +2,9 @@ use bincode::SizeLimit;
 use bincode::rustc_serialize::{encode, decode};
 use client;
 use constants::BUFFER_SIZE;
+use eventual::*;
 use message::*;
+use std::fmt::Debug;
 use std::io::Read;
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
@@ -18,66 +20,101 @@ fn get_now() -> u64 {
     ((sec as u64) * 1_000_000) + (nsec as u64 / 1000)
 }
 
-fn read_one(responses: &mut Vec<InternodeResponse>) -> client::MessageResult {
+fn read_one(key: &Key,
+            responses: Vec<Future<Result<InternodeResponse>, ()>>)
+            -> client::MessageResult {
     debug!("Reading one");
-    let message = responses.pop().unwrap().to_response();
-    let r = ResponseMessage {
-        message: message,
-        consistency: Consistency::One,
-    };
-    Ok(r)
-}
 
-fn read_latest(key: &Key, responses: &mut Vec<InternodeResponse>) -> client::MessageResult {
-    debug!("Reading quorum");
+    let responses_future: Future<Vec<Result<InternodeResponse>>, ()> = sequence(responses)
+                                                                           .filter(|response| {
+                                                                               match *response {
+                                                                                   Ok(_) => true,
+                                                                                   Err(_) => false,
+                                                                               }
+                                                                           })
+                                                                           .collect();
 
-    let mut latest: Option<InternodeResponse> = None;
-
-    for response in responses {
-        debug!("Latest response so far: {:?}", latest);
-        debug!("Internode response: {:?}", response);
-        match response.get_timestamp() {
-            None => (),
-            Some(t) => {
-                let latest_timestamp = match latest {
-                    None => Some(0),
-                    Some(ref l) => l.get_timestamp(),
-                };
-                if Some(t) > latest_timestamp {
-                    latest = Some(response.clone().to_owned());
-                };
-            }
+    match responses_future.await().unwrap().pop().unwrap() {
+        Ok(m) => {
+            let r = ResponseMessage {
+                message: m.to_response(),
+                consistency: Consistency::One,
+            };
+            Ok(r)
+        }
+        Err(_) => {
+            let r = ResponseMessage {
+                message: Response::Error {
+                    key: key.clone().to_owned(),
+                    message: "All the storage nodes replied with errors.".to_string(),
+                },
+                consistency: Consistency::One,
+            };
+            Ok(r)
         }
     }
+}
 
-    let message = match latest {
-        Some(ref latest) => latest.clone().to_owned().to_response(),
-        None => {
-            Response::Value {
-                key: key.clone().to_owned(),
-                value: Value::None,
-            }
+fn read_latest(key: &Key,
+               responses: Vec<Future<Result<InternodeResponse>, ()>>)
+               -> client::MessageResult {
+    debug!("Reading quorum");
+
+    let latest: Option<InternodeResponse> = sequence(responses)
+                                                .reduce((0, None), |last, response| {
+                                                    let (max_timestamp, max_response) = last;
+                                                    debug!("Max timestamp so far: {:?}",
+                                                           max_timestamp);
+                                                    debug!("Max max_response so far: {:?}",
+                                                           max_response);
+                                                    match response {
+                                                        Ok(r) => {
+                                                            let ts = r.get_timestamp().unwrap();
+                                                            if ts >= max_timestamp {
+                                                                (ts, Some(r.clone()))
+                                                            } else {
+                                                                (max_timestamp, max_response)
+                                                            }
+                                                        }
+                                                        Err(_) => (max_timestamp, max_response),
+                                                    }
+                                                })
+                                                .await()
+                                                .unwrap()
+                                                .1;
+
+    debug!("Quorum read final response: {:?}", latest);
+
+    match latest {
+        Some(m) => {
+            let r = ResponseMessage {
+                message: m.to_response(),
+                consistency: Consistency::Latest,
+            };
+            Ok(r)
         }
-    };
-    let r = ResponseMessage {
-        message: message,
-        consistency: Consistency::Latest,
-    };
-    Ok(r)
+        None => {
+            let r = ResponseMessage {
+                message: Response::Error {
+                    key: key.clone().to_owned(),
+                    message: "?".to_string(),
+                },
+                consistency: Consistency::Latest,
+            };
+            Ok(r)
+        }
+    }
 }
 
 fn read(shards: &Vec<String>, key: &Key, consistency: &Consistency) -> client::MessageResult {
-    let mut responses: Vec<InternodeResponse> = vec![];
+    let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
     for shard in shards {
         let response = read_from_other_storage_node(&*shard, &key);
-        match response {
-            Ok(response) => responses.push(response),
-            Err(_) => (),
-        }
+        responses.push(response);
     }
     match consistency {
-        &Consistency::One => read_one(&mut responses),
-        &Consistency::Latest => read_latest(key, &mut responses),
+        &Consistency::One => read_one(key, responses),
+        &Consistency::Latest => read_latest(key, responses),
     }
 }
 
@@ -86,7 +123,7 @@ fn write(shards: &Vec<String>,
          value: &Value,
          consistency: &Consistency)
          -> client::MessageResult {
-    let mut responses: Vec<Result<InternodeResponse>> = vec![];
+    let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
     for shard in shards {
         let response = write_to_other_storage_node(&*shard, &key, &value);
         debug!("Write response for {:?}, {:?} @ Shard {:?}: {:?}",
@@ -103,6 +140,7 @@ fn write(shards: &Vec<String>,
 
     let mut write_count = 0;
     for response_result in responses {
+        let response_result = response_result.await().ok().unwrap();
         match response_result {
             Ok(response) => {
                 match response {
@@ -131,20 +169,18 @@ fn write(shards: &Vec<String>,
 }
 
 
-fn read_from_other_storage_node(target: &str,
-                                key: &Key)
-                                -> Result<InternodeResponse> {
+fn read_from_other_storage_node(target: &str, key: &Key) -> Future<Result<InternodeResponse>, ()> {
     debug!("Forwarding read request for {:?} to shard at {:?}.",
            key,
            target);
     let content = InternodeRequest::Read { key: key.to_owned() };
-    client::Client::send_internode(target, &content)
+    client::Client::send_to_node(target, &content)
 }
 
 fn write_to_other_storage_node(target: &str,
                                key: &Key,
                                value: &Value)
-                               -> Result<InternodeResponse> {
+                               -> Future<Result<InternodeResponse>, ()> {
     debug!("Forwarding write request for {:?} to shard at {:?}.",
            key,
            target);
@@ -152,7 +188,7 @@ fn write_to_other_storage_node(target: &str,
         key: key.clone().to_owned(),
         value: value.clone().to_owned(),
     };
-    client::Client::send_internode(target, &request)
+    client::Client::send_to_node(target, &request)
 }
 
 
@@ -206,26 +242,39 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
 }
 
 
-pub fn listen(address: &str, shards: &Vec<Vec<String>>) {
-    let listener = TcpListener::bind(address).unwrap();
+trait ClientHandler where Self: Debug {
+    fn handle(&mut self, shards: &Vec<Vec<String>>);
+}
 
-    // Accept connections and process them, spawning a new thread for each one.
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                debug!("Starting listener stream: {:?}", stream);
-                let shards = shards.clone();
-                thread::spawn(move || {
-                    // connection succeeded
-                    let mut stream = stream;
-                    handle_client(&mut stream, &shards);
-                });
-            }
-            Err(e) => {
-                error!("Connection failed!: {:?}", e);
+impl ClientHandler for TcpStream {
+    fn handle(&mut self, shards: &Vec<Vec<String>>) {
+        debug!("Starting listener stream: {:?}", self);
+        handle_client(self, &shards);
+    }
+}
+
+pub fn listen(address: &str, shards: &Vec<Vec<String>>) -> Future<(), ()> {
+    let address = address.to_owned();
+    let shards = shards.clone();
+
+    Future::spawn(move || {
+        let listener = TcpListener::bind(&*address).unwrap();
+
+        // Accept connections and process them, spawning a new thread for each one.
+        for stream in listener.incoming() {
+            let shards = shards.clone().to_owned();
+            match stream {
+                Ok(stream) => {
+                    thread::spawn(move || {
+                        // connection succeeded
+                        let mut stream = stream;
+                        stream.handle(&shards);
+                    });
+                }
+                Err(e) => error!("Connection failed!: {:?}", e),
             }
         }
-    }
-    // close the socket server
-    drop(listener);
+        // close the socket server
+        drop(listener);
+    })
 }
