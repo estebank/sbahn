@@ -12,6 +12,7 @@ use std::thread;
 use time;
 
 
+/// Current Unix timestamp
 fn get_now() -> u64 {
     let now = time::get_time();
     let sec = now.sec;
@@ -20,6 +21,7 @@ fn get_now() -> u64 {
     ((sec as u64) * 1_000_000) + (nsec as u64 / 1000)
 }
 
+/// Obtain one (any) valid response from all the shard responses.
 fn read_one(key: &Key,
             responses: Vec<Future<Result<InternodeResponse>, ()>>)
             -> client::MessageResult {
@@ -72,6 +74,7 @@ fn read_one(key: &Key,
     }
 }
 
+/// Obtain the newest `Value` among those stored in this shard's `StorageNode`s.
 fn read_latest(key: &Key,
                responses: Vec<Future<Result<InternodeResponse>, ()>>)
                -> client::MessageResult {
@@ -123,6 +126,8 @@ fn read_latest(key: &Key,
     }
 }
 
+/// Read from all nodes for this `Key`'s shard, and use `consistency` to
+/// collate the `StorageNode`'s responses.
 fn read(shards: &Vec<String>, key: &Key, consistency: &Consistency) -> client::MessageResult {
     debug!("Read {:?} with {:?} consistency.", key, consistency);
     let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
@@ -136,6 +141,8 @@ fn read(shards: &Vec<String>, key: &Key, consistency: &Consistency) -> client::M
     }
 }
 
+/// Write to all nodes for this `Key`'s shard, and use `consistency` to
+/// determine when to acknowledge the write to the client.
 fn write(shards: &Vec<String>,
          key: &Key,
          value: &Value,
@@ -209,7 +216,8 @@ fn write_to_other_storage_node(target: &str,
     client::Client::send_to_node(target, &request)
 }
 
-
+/// Perform a client's `Request` in the appropriate shard and respond to the
+/// client with a ResponseMessage.
 pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
     let mut buf = [0; BUFFER_SIZE];
     &stream.read(&mut buf);
@@ -264,6 +272,7 @@ trait ClientHandler where Self: Debug {
     fn handle(&mut self, shards: &Vec<Vec<String>>);
 }
 
+/// An sbahn aware stream
 impl ClientHandler for TcpStream {
     fn handle(&mut self, shards: &Vec<Vec<String>>) {
         debug!("Starting listener stream: {:?}", self);
@@ -271,6 +280,7 @@ impl ClientHandler for TcpStream {
     }
 }
 
+/// Listen on `address` for incoming client requests, and perform them on the appropriate shards.
 pub fn listen(address: &str, shards: &Vec<Vec<String>>) -> Future<(), ()> {
     let address = address.to_owned();
     let shards = shards.clone();

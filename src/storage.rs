@@ -3,12 +3,16 @@ use message::{Key, Value};
 use std::sync::Mutex;
 use std::fmt::Debug;
 
+/// A generic storage backend for `StorageNode`s to use as persistence layer.
 pub trait StorageBackend where Self: Debug + Send + Sync {
     fn new() -> Self;
+    /// Persist `value` under `key`.
     fn insert(&self, key: Key, value: Value);
+    /// Get a `Value` for the given `key`.
     fn get(&self, key: &Key) -> Option<Value>;
 }
 
+/// A basic `HashMap` based backend for in-memory `StorageNode`s.
 #[derive(Debug)]
 pub struct HashMapBackend {
     hashmap: Mutex<HashMap<Key, Value>>,
