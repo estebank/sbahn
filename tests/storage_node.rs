@@ -7,7 +7,8 @@ use sbahn::client;
 use sbahn::handler;
 use sbahn::message;
 use sbahn::message::*;
-use sbahn::storage_node;
+use sbahn::storage::HashMapBackend;
+use sbahn::storage_node::StorageNode;
 use std::thread;
 use rand::random;
 
@@ -22,7 +23,7 @@ fn get_storage_node<'a>(shard_count: usize) -> String {
         let pos = 0;
         let addr = &*a;
         let addr = &addr.clone().to_owned().to_string();
-        let mut sn = storage_node::StorageNode::new(addr.clone(), pos, shard_count);
+        let mut sn: StorageNode<HashMapBackend> = StorageNode::new(addr.clone(), pos, shard_count);
         &sn.listen();
     });
     thread::sleep_ms(500);  // Wait for storage node to start listening
@@ -57,7 +58,7 @@ fn single_node() {
                     assert_eq!(key, insert_key);
                     assert_eq!(timestamp, 10000000);
                 },
-                _ => assert!(false),
+                e => {println!("{:?}", e); assert!(false)},
             },
             Err(_) => assert!(false),
         }
@@ -101,7 +102,7 @@ fn read_my_writes() {
     thread::spawn(move || {
         let addr = "127.0.0.1:1100";
         let _shards = &z.to_owned();
-        handler::listen(addr, &_shards);
+        let _ = handler::listen(addr, &_shards);
     });
 
     let y = &shards.clone();
@@ -111,7 +112,7 @@ fn read_my_writes() {
             let addr = addr.clone().to_owned();
             let shard_count = shards.len();
             thread::spawn(move || {
-                let mut sn = storage_node::StorageNode::new(addr, pos, shard_count);
+                let mut sn: StorageNode<HashMapBackend> = StorageNode::new(addr, pos, shard_count);
                 &sn.listen();
             });
         }
@@ -124,7 +125,7 @@ fn read_my_writes() {
             pkey: vec![4, 5, 6],
             lkey: vec![7, 8, 9],
         };
-        let client = client::Client { storage_nodes: vec![target] };
+        let client = client::Client { handlers: vec![target] };
         {
             let content = message::Request {
                 action: message::Action::Write {

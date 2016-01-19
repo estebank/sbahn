@@ -27,6 +27,9 @@ fn read_one(key: &Key,
 
     let responses_future: Future<Vec<Result<InternodeResponse>>, ()> = sequence(responses)
                                                                            .filter(|response| {
+                                                                               debug!("Future res\
+                                                                                       ponse {:?}",
+                                                                                      response);
                                                                                match *response {
                                                                                    Ok(_) => true,
                                                                                    Err(_) => false,
@@ -34,15 +37,29 @@ fn read_one(key: &Key,
                                                                            })
                                                                            .collect();
 
-    match responses_future.await().unwrap().pop().unwrap() {
-        Ok(m) => {
-            let r = ResponseMessage {
-                message: m.to_response(),
-                consistency: Consistency::One,
-            };
-            Ok(r)
+    match responses_future.await().unwrap().pop() {
+        Some(response) => {
+            match response {
+                Ok(m) => {
+                    let r = ResponseMessage {
+                        message: m.to_response(),
+                        consistency: Consistency::One,
+                    };
+                    Ok(r)
+                }
+                Err(_) => {
+                    let r = ResponseMessage {
+                        message: Response::Error {
+                            key: key.clone().to_owned(),
+                            message: "All the storage nodes replied with errors.".to_string(),
+                        },
+                        consistency: Consistency::One,
+                    };
+                    Ok(r)
+                }
+            }
         }
-        Err(_) => {
+        None => {
             let r = ResponseMessage {
                 message: Response::Error {
                     key: key.clone().to_owned(),
@@ -107,6 +124,7 @@ fn read_latest(key: &Key,
 }
 
 fn read(shards: &Vec<String>, key: &Key, consistency: &Consistency) -> client::MessageResult {
+    debug!("Read {:?} with {:?} consistency.", key, consistency);
     let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
     for shard in shards {
         let response = read_from_other_storage_node(&*shard, &key);

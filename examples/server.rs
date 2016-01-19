@@ -4,7 +4,8 @@ extern crate log;
 extern crate env_logger;
 
 use sbahn::handler;
-use sbahn::storage_node;
+use sbahn::storage::HashMapBackend;
+use sbahn::storage_node::StorageNode;
 use std::thread;
 
 fn main() {
@@ -23,7 +24,7 @@ fn main() {
         let addr = "127.0.0.1:1100";
         let _shards = &z.to_owned();
         println!("Handler Node @ {:?}", &addr);
-        handler::listen(addr, &_shards);
+        let _ = handler::listen(addr, &_shards);
     });
 
     let y = &shards.clone();
@@ -37,7 +38,7 @@ fn main() {
             let shard_count = shards.len();
             thread::spawn(move || {
                 println!("Storage Node {:?} @ {:?}", &pos, &addr);
-                let mut sn = storage_node::StorageNode::new(addr, pos, shard_count);
+                let mut sn: StorageNode<HashMapBackend>= StorageNode::new(addr, pos, shard_count);
                 &sn.listen();
             });
         }

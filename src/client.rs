@@ -8,22 +8,25 @@ use bincode::rustc_serialize::{encode, decode};
 use rustc_serialize::{Encodable, Decodable};
 use bincode::SizeLimit;
 
+/// An sbahn client.
 pub struct Client {
-    pub storage_nodes: Vec<String>,
+    /// List of addresses to frontend request handlers
+    pub handlers: Vec<String>,
 }
 
 pub type MessageResult = Result<ResponseMessage>;
 
 impl Client {
-    pub fn new(storage_nodes: Vec<String>) -> Client {
-        Client { storage_nodes: storage_nodes }
+    pub fn new(handlers: Vec<String>) -> Client {
+        Client { handlers: handlers }
     }
 
     pub fn send(&self, message: Request) -> Future<MessageResult, ()> {
-        let target = &self.storage_nodes[0];
+        let target = &self.handlers[0];
         Self::send_to_node(target, &message)
     }
 
+    /// Sends a message that can be binary encoded to the Storage Node at `target`.
     pub fn send_to_node<T, K>(target: &str, message: &T) -> Future<Result<K>, ()>
         where T: Debug + Encodable,
               K: Debug + Decodable + Send
@@ -48,8 +51,8 @@ impl Client {
         }
     }
 
+    /// Sends a binary encoded message to the Storage Node at `target`.
     pub fn send_buffer(target: &str, message: Vec<u8>) -> Future<Result<Vec<u8>>, ()> {
-        debug!("Buffer being sent: {:?}", message);
         let target = target.to_owned();
         Future::spawn(move || {
             match TcpStream::connect(&*target) {
@@ -64,7 +67,9 @@ impl Client {
                         Err(_) => return Err(Error::ConnectionError),
                         _ => (),
                     }
-                    Ok(buf.iter().cloned().collect())
+                    let val = buf.iter().cloned().collect();
+                    debug!("Response from {:?}: {:?}", target, val);
+                    Ok(val)
                 }
                 Err(e) => {
                     error!("{:?}", e);

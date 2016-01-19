@@ -53,12 +53,12 @@ fn main() {
         },
     ];
 
-    let client = client::Client { storage_nodes: vec![target] };
+    let client = client::Client { handlers: vec![target] };
 
     for m in messages {
         let content = message::Request {
             action: m,
-            consistency: message::Consistency::Latest,
+            consistency: message::Consistency::One,
         };
 
         let r = client.send(content).await().unwrap();

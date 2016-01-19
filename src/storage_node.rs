@@ -2,128 +2,146 @@ use bincode::SizeLimit;
 use bincode::rustc_serialize::{encode, decode};
 use constants::BUFFER_SIZE;
 use message::{Key, Value, InternodeRequest, InternodeResponse};
-use std::collections::HashMap;
+use storage::StorageBackend;
 use std::io::Read;
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
-
-pub type DataMap = HashMap<Key, Value>;
-
-
-pub struct StorageNode {
+pub struct StorageNode<Backend: StorageBackend + 'static> {
     pub shard: usize,
     pub shard_count: usize,
     pub address: String,
-    pub map: Arc<Mutex<DataMap>>,
+    pub map: Arc<Backend>,
 }
 
+#[derive(Debug)]
+struct ClientHandler<Backend: StorageBackend + 'static> {
+    stream: TcpStream,
+    shard: usize,
+    shard_count: usize,
+    map: Arc<Backend>,
+}
 
-fn read_from_map(map: &mut DataMap, key: &Key) -> InternodeResponse {
-    debug!("Reading {:?}", key);
-    match map.get(&key) {
-        Some(value) => {
-            InternodeResponse::Value {
-                key: key.clone().to_owned(),
-                value: value.to_owned(),
-            }
-        }
-        None => {
-            InternodeResponse::Value {
-                key: key.clone().to_owned(),
-                value: Value::None,
-            }
+impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
+    fn new(stream: TcpStream,
+           map: Arc<Backend>,
+           shard_number: usize,
+           shard_count: usize)
+           -> ClientHandler<Backend> {
+        ClientHandler {
+            stream: stream,
+            shard: shard_number,
+            shard_count: shard_count,
+            map: map,
         }
     }
-}
 
+    pub fn handle_client(&mut self) {
+        let mut buf = [0; BUFFER_SIZE];
+        let _ = self.stream.read(&mut buf);
+        let m: InternodeRequest = match decode(&buf) {
+            Ok(m) => m,
+            Err(_) => panic!("decoding error!"),
+        };
 
-fn execute_for_this_shard<F>(key: &Key,
-                             shard: usize,
-                             shard_count: usize,
-                             map: &mut DataMap,
-                             f: F)
-                             -> InternodeResponse
-    where F: Fn(&mut DataMap) -> InternodeResponse
-{
-    let mut map = map;
-    if key.shard(shard_count) == shard {
-        f(&mut map)
-    } else {
-        let error = format!("{:?} doesn't belong to this shard!", key);
-        error!("{}", error);
-        InternodeResponse::Error {
-            key: key.clone().to_owned(),
-            message: error,
+        debug!("Message received: {:?}", m);
+        let response: InternodeResponse = self.handle_message(m);
+        let encoded = encode(&response, SizeLimit::Infinite);
+        let _ = match encoded {
+            Ok(b) => self.stream.write(&b),
+            Err(_) => panic!("encoding error! {:?}", response),
+        };
+    }
+
+    pub fn handle_message(&mut self, message: InternodeRequest) -> InternodeResponse {
+        match message {
+            InternodeRequest::Read {key} => self.get(key),
+            InternodeRequest::Write {key, value} => self.insert(key, value),
         }
     }
-}
 
-pub fn handle_message(shard: usize,
-                      message: InternodeRequest,
-                      map: &mut DataMap,
-                      shard_count: usize)
-                      -> InternodeResponse {
-    let mut map = map;
-    match message {
-        InternodeRequest::Read {key} => {
-            execute_for_this_shard(&key, shard, shard_count, &mut map, |map| {
-                debug!("Executing read_from_map {:?}", map);
-                let mut map = map;
-                read_from_map(&mut map, &key)
-            })
-        }
-        InternodeRequest::Write {key, value} => {
-            execute_for_this_shard(&key, shard, shard_count, &mut map, |map| {
-                debug!("Writing {:?} -> {:?}", key, value);
+    fn get(&mut self, key: Key) -> InternodeResponse {
+        debug!("Reading {:?}", key);
+        let key_shard = key.shard(self.shard_count.clone());
+        let this_shard = self.shard;
+        if key_shard == this_shard {
 
-                match value {
-                    Value::None => {
-                        let error = format!("Write operation at {:?} with None.This should have \
-                                             been a Tombstone",
-                                            key);
-                        error!("{}", error);
-                        InternodeResponse::Error {
-                            key: key.clone().to_owned(),
-                            message: error,
-                        }
-                    }
-                    Value::Value {timestamp, ..} | Value::Tombstone {timestamp} => {
-                        map.insert(key.clone().to_owned(), value.clone().to_owned());
-                        InternodeResponse::WriteAck {
-                            key: key.to_owned(),
-                            timestamp: timestamp.clone().to_owned(),
-                        }
+            debug!("get self {:?}", self);
+            debug!("get self.map {:?}", self.map);
+            let v = self.map.get(&key);
+            debug!("get value {:?}", v);
+            // let ref mut map: Backend = *match Arc::get_mut(&mut self.map);
+            match v {
+                Some(value) => {
+                    InternodeResponse::Value {
+                        key: key.clone().to_owned(),
+                        value: value.to_owned(),
                     }
                 }
-            })
+                None => {
+                    InternodeResponse::Value {
+                        key: key.clone().to_owned(),
+                        value: Value::None,
+                    }
+                }
+            }
+        } else {
+            let error = format!("{:?} doesn't belong to this shard!", key);
+            error!("{}", error);
+            InternodeResponse::Error {
+                key: key.clone().to_owned(),
+                message: error,
+            }
+        }
+    }
+
+    fn insert(&mut self, key: Key, value: Value) -> InternodeResponse {
+        debug!("Writing {:?} -> {:?}", key, value);
+        let key_shard = key.shard(self.shard_count.clone());
+        let this_shard = self.shard;
+        if key_shard == this_shard {
+            match value {
+                Value::None => {
+                    let error = format!("Write operation at {:?} with None.This should have been \
+                                         a Tombstone",
+                                        key);
+                    error!("{}", error);
+                    InternodeResponse::Error {
+                        key: key.clone().to_owned(),
+                        message: error,
+                    }
+                }
+                Value::Value {timestamp, ..} | Value::Tombstone {timestamp} => {
+                    debug!("set self.map {:?}", self.map);
+                    debug!("key: {:?}", key);
+                    debug!("timestamp: {:?}", timestamp);
+                    let map = &self.map;
+                    map.insert(key.clone().to_owned(), value.clone().to_owned());
+                    InternodeResponse::WriteAck {
+                        key: key.to_owned(),
+                        timestamp: timestamp.clone().to_owned(),
+                    }
+                }
+            }
+        } else {
+            let error = format!("{:?} doesn't belong to this shard!", key);
+            error!("{}", error);
+            InternodeResponse::Error {
+                key: key.clone().to_owned(),
+                message: error,
+            }
         }
     }
 }
 
-
-pub fn handle_client(shard: usize, stream: &mut TcpStream, map: &mut DataMap, shard_count: usize) {
-    let mut buf = [0; BUFFER_SIZE];
-    &stream.read(&mut buf);
-    let m: InternodeRequest = match decode(&buf) {
-        Ok(m) => m,
-        Err(_) => panic!("decoding error!"),
-    };
-
-    debug!("Message received: {:?}", m);
-    let response: InternodeResponse = handle_message(shard, m, map, shard_count);
-    let encoded = encode(&response, SizeLimit::Infinite);
-    let _ = match encoded {
-        Ok(b) => stream.write(&b),
-        Err(_) => panic!("encoding error! {:?}", response),
-    };
-}
-
-impl StorageNode {
-    pub fn new(local_address: String, shard_number: usize, shard_count: usize) -> StorageNode {
-        let map = Arc::new(Mutex::new(DataMap::new()));
+impl<Backend: StorageBackend + 'static> StorageNode<Backend> {
+    pub fn new(local_address: String,
+               shard_number: usize,
+               shard_count: usize)
+               -> StorageNode<Backend> {
+        let map = Arc::new(Backend::new());
         StorageNode {
             shard: shard_number,
             shard_count: shard_count,
@@ -133,7 +151,6 @@ impl StorageNode {
     }
 
     pub fn listen(&mut self) {
-        let shard = self.shard;
         let address = &*self.address;
         let listener = match TcpListener::bind(address) {
             Ok(l) => l,
@@ -145,25 +162,23 @@ impl StorageNode {
             match stream {
                 Ok(stream) => {
                     debug!("Starting listener stream: {:?}", stream);
-                    let map = self.map.clone();
+                    let shard = self.shard;
                     let shard_count = self.shard_count;
+                    let map = self.map.clone();
                     thread::spawn(move || {
+                        let mut ch = ClientHandler::new(stream, map, shard, shard_count);
                         // connection succeeded
-                        let mut stream = stream;
-                        let mut map = map.lock().unwrap();
-                        handle_client(shard, &mut stream, &mut map, shard_count);
+                        ch.handle_client();
                     });
                 }
                 Err(e) => {
                     error!("connection failed!: {:?}", e);
                 }
             }
-            let map = self.map.clone();
-            let map = map.lock().unwrap();
             debug!("Contents of shard {:?} @ {:?} map: {:?}",
                    self.shard,
                    self.address,
-                   *map);
+                   self.map);
         }
 
         // close the socket server
