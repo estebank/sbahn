@@ -32,46 +32,24 @@ fn read_one(key: &Key,
                                                                                debug!("Future res\
                                                                                        ponse {:?}",
                                                                                       response);
-                                                                               match *response {
-                                                                                   Ok(_) => true,
-                                                                                   Err(_) => false,
-                                                                               }
+                                                                               response.is_ok()
                                                                            })
                                                                            .collect();
 
-    match responses_future.await().unwrap().pop() {
-        Some(response) => {
-            match response {
-                Ok(m) => {
-                    let r = ResponseMessage {
-                        message: m.to_response(),
-                        consistency: Consistency::One,
-                    };
-                    Ok(r)
-                }
-                Err(_) => {
-                    let r = ResponseMessage {
-                        message: Response::Error {
-                            key: key.to_owned(),
-                            message: "All the storage nodes replied with errors.".to_string(),
-                        },
-                        consistency: Consistency::One,
-                    };
-                    Ok(r)
-                }
-            }
-        }
-        None => {
-            let r = ResponseMessage {
-                message: Response::Error {
-                    key: key.to_owned(),
-                    message: "All the storage nodes replied with errors.".to_string(),
-                },
-                consistency: Consistency::One,
-            };
-            Ok(r)
-        }
-    }
+    let error_message = ResponseMessage {
+        message: Response::Error {
+            key: key.to_owned(),
+            message: "All the storage nodes replied with errors.".to_string(),
+        },
+        consistency: Consistency::One,
+    };
+
+    Ok(responses_future.await().unwrap().pop().map(|response|
+        response.map(|m| ResponseMessage {
+            message: m.to_response(),
+            consistency: Consistency::One,
+        }).unwrap_or(error_message.to_owned()))
+        .unwrap_or(error_message.to_owned()))
 }
 
 /// Obtain the newest `Value` among those stored in this shard's `StorageNode`s.
@@ -107,21 +85,19 @@ fn read_latest(key: &Key,
 
     match latest {
         Some(m) => {
-            let r = ResponseMessage {
+            Ok(ResponseMessage {
                 message: m.to_response(),
                 consistency: Consistency::Latest,
-            };
-            Ok(r)
+            })
         }
         None => {
-            let r = ResponseMessage {
+            Ok(ResponseMessage {
                 message: Response::Error {
                     key: key.to_owned(),
                     message: "?".to_string(),
                 },
                 consistency: Consistency::Latest,
-            };
-            Ok(r)
+            })
         }
     }
 }
@@ -231,7 +207,7 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
 
     let timestamp = get_now();
     let r = match m.action {
-        Action::Read { key } => {
+        Action::Read {key} => {
             let msg_shard = key.shard(shards.len());
             read(&shards[msg_shard], &key, &m.consistency)
         }

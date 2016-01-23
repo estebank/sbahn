@@ -58,14 +58,12 @@ impl Client {
             match TcpStream::connect(&*target) {
                 Ok(stream) => {
                     let mut stream = stream;
-                    match stream.write(&message) {
-                        Err(_) => return Err(Error::ConnectionError),
-                        _ => (),
+                    if stream.write(&message).is_err() {
+                        return Err(Error::ConnectionError);
                     }
                     let mut buf = [0; BUFFER_SIZE];
-                    match stream.read(&mut buf) {
-                        Err(_) => return Err(Error::ConnectionError),
-                        _ => (),
+                    if stream.read(&mut buf).is_err() {
+                        return Err(Error::ConnectionError);
                     }
                     let val = buf.iter().cloned().collect();
                     debug!("Response from {:?}: {:?}", target, val);
