@@ -21,7 +21,7 @@ impl Client {
         Client { handlers: handlers }
     }
 
-    pub fn send(&self, message: Request) -> Future<MessageResult, ()> {
+    pub fn send(&self, message: &Request) -> Future<MessageResult, ()> {
         let target = &self.handlers[0];
         Self::send_to_node(target, &message)
     }

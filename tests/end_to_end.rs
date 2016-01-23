@@ -55,7 +55,7 @@ fn end_to_end() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content).await().unwrap();
+            let r = client.send(&content).await().unwrap();
             match r {
                 Ok(r) => match r.message {
                     Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
@@ -71,7 +71,7 @@ fn end_to_end() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content).await().unwrap();
+            let r = client.send(&content).await().unwrap();
             match r {
                 Ok(r) => match r.message {
                     Response::Value {key, value} => {
@@ -93,7 +93,7 @@ fn end_to_end() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content).await().unwrap();
+            let r = client.send(&content).await().unwrap();
             match r {
                 Ok(r) => match r.message {
                     Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
@@ -109,7 +109,7 @@ fn end_to_end() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content).await().unwrap();
+            let r = client.send(&content).await().unwrap();
             match r {
                 Ok(r) => match r.message {
                     Response::Value {key, value} => {

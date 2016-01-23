@@ -61,7 +61,7 @@ fn main() {
             consistency: message::Consistency::One,
         };
 
-        let r = client.send(content).await().unwrap();
+        let r = client.send(&content).await().unwrap();
         println!("Response: {:?}", r);
     }
 }

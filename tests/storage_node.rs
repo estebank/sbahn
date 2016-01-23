@@ -134,7 +134,7 @@ fn read_my_writes() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content);
+            let r = client.send(&content);
             let r = r.await().unwrap();
             match r {
                 Ok(r) => match r.message {
@@ -151,7 +151,7 @@ fn read_my_writes() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content);
+            let r = client.send(&content);
             let r = r.await().unwrap();
             match r {
                 Ok(r) => match r.message {
@@ -174,7 +174,7 @@ fn read_my_writes() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content);
+            let r = client.send(&content);
             let r = r.await().unwrap();
             match r {
                 Ok(r) => match r.message {
@@ -191,7 +191,7 @@ fn read_my_writes() {
                 },
                 consistency: message::Consistency::Latest,
             };
-            let r = client.send(content);
+            let r = client.send(&content);
             let r = r.await().unwrap();
             match r {
                 Ok(r) => match r.message {
