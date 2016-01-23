@@ -22,7 +22,7 @@ fn get_storage_node<'a>(shard_count: usize) -> String {
     thread::spawn(move || {
         let pos = 0;
         let addr = &*a;
-        let addr = &addr.clone().to_owned().to_string();
+        let addr = &addr.to_owned().to_string();
         let mut sn: StorageNode<HashMapBackend> = StorageNode::new(addr.clone(), pos, shard_count);
         &sn.listen();
     });
@@ -43,13 +43,13 @@ fn single_node() {
     };
     {
         let content = message::InternodeRequest::Write {
-            key: insert_key.clone().to_owned(),
+            key: insert_key.to_owned(),
             value: Value::Value {
                 content: vec![1],
                 timestamp: 10000000,
             },
         };
-        let addr = &addr.clone().to_owned();
+        let addr = &addr.to_owned();
         let r: Future<Result<message::InternodeResponse>, ()> = client::Client::send_to_node(addr, &content);
         let r = r.await().unwrap();
         match r {
@@ -65,9 +65,9 @@ fn single_node() {
     }
     {
         let content = message::InternodeRequest::Read {
-            key: insert_key.clone().to_owned(),
+            key: insert_key.to_owned(),
         };
-        let addr = &addr.clone().to_owned();
+        let addr = &addr.to_owned();
         let r: Future<Result<message::InternodeResponse>, ()> = client::Client::send_to_node(addr, &content);
         let r = r.await().unwrap();
         match r {
@@ -109,7 +109,7 @@ fn read_my_writes() {
     let x = y.iter();
     for (pos, addresses) in x.enumerate() {
         for addr in addresses {
-            let addr = addr.clone().to_owned();
+            let addr = addr.to_owned();
             let shard_count = shards.len();
             thread::spawn(move || {
                 let mut sn: StorageNode<HashMapBackend> = StorageNode::new(addr, pos, shard_count);
@@ -129,7 +129,7 @@ fn read_my_writes() {
         {
             let content = message::Request {
                 action: message::Action::Write {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                     content: vec![1],
                 },
                 consistency: message::Consistency::Latest,
@@ -147,7 +147,7 @@ fn read_my_writes() {
         {
             let content = message::Request {
                 action: message::Action::Read {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                 },
                 consistency: message::Consistency::Latest,
             };
@@ -170,7 +170,7 @@ fn read_my_writes() {
         {
             let content = message::Request {
                 action: message::Action::Delete {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                 },
                 consistency: message::Consistency::Latest,
             };
@@ -187,7 +187,7 @@ fn read_my_writes() {
         {
             let content = message::Request {
                 action: message::Action::Read {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                 },
                 consistency: message::Consistency::Latest,
             };

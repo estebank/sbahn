@@ -30,7 +30,7 @@ fn end_to_end() {
     let x = y.iter();
     for (pos, addresses) in x.enumerate() {
         for addr in addresses {
-            let addr = addr.clone().to_owned();
+            let addr = addr.to_owned();
             let shard_count = shards.len();
             thread::spawn(move || {
                 let mut sn: StorageNode<HashMapBackend>= StorageNode::new(addr, pos, shard_count);
@@ -50,7 +50,7 @@ fn end_to_end() {
         {
             let content = message::Request {
                 action: message::Action::Write {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                     content: vec![1],
                 },
                 consistency: message::Consistency::Latest,
@@ -67,7 +67,7 @@ fn end_to_end() {
         {
             let content = message::Request {
                 action: message::Action::Read {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                 },
                 consistency: message::Consistency::Latest,
             };
@@ -89,7 +89,7 @@ fn end_to_end() {
         {
             let content = message::Request {
                 action: message::Action::Delete {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                 },
                 consistency: message::Consistency::Latest,
             };
@@ -105,7 +105,7 @@ fn end_to_end() {
         {
             let content = message::Request {
                 action: message::Action::Read {
-                    key: insert_key.clone().to_owned(),
+                    key: insert_key.to_owned(),
                 },
                 consistency: message::Consistency::Latest,
             };

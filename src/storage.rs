@@ -40,7 +40,7 @@ impl StorageBackend for HashMapBackend {
         let value = map.get(key);
         debug!("[HashMapBackend] Value read {:?}", value);
         match value {
-            Some(x) => Some(x.clone().to_owned()),
+            Some(x) => Some(x.to_owned()),
             None => None,
         }
     }

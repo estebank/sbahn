@@ -27,7 +27,7 @@ fn main() {
         };
         {
             let content = message::InternodeRequest::Write {
-                key: insert_key.clone().to_owned(),
+                key: insert_key.to_owned(),
                 value: Value::Value {
                     content: vec![i],
                     timestamp: 10000000,

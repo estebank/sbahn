@@ -25,31 +25,31 @@ fn main() {
     };
     let messages = vec![
         message::Action::Write {
-            key: key.clone().to_owned(),
+            key: key.to_owned(),
             content: vec![1],
         },
         message::Action::Write {
-            key: key.clone().to_owned(),
+            key: key.to_owned(),
             content: vec![2],
         },
         message::Action::Read {
-            key: key.clone().to_owned(),
+            key: key.to_owned(),
         },
         message::Action::Read {
-            key: key2.clone().to_owned(),
+            key: key2.to_owned(),
         },
         message::Action::Write {
-            key: key2.clone().to_owned(),
+            key: key2.to_owned(),
             content: vec![101],
         },
         message::Action::Read {
-            key: key2.clone().to_owned(),
+            key: key2.to_owned(),
         },
         message::Action::Delete {
-            key: key2.clone().to_owned(),
+            key: key2.to_owned(),
         },
         message::Action::Read {
-            key: key2.clone().to_owned(),
+            key: key2.to_owned(),
         },
     ];
 

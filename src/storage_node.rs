@@ -76,13 +76,13 @@ impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
             match v {
                 Some(value) => {
                     InternodeResponse::Value {
-                        key: key.clone().to_owned(),
+                        key: key.to_owned(),
                         value: value.to_owned(),
                     }
                 }
                 None => {
                     InternodeResponse::Value {
-                        key: key.clone().to_owned(),
+                        key: key.to_owned(),
                         value: Value::None,
                     }
                 }
@@ -91,7 +91,7 @@ impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
             let error = format!("{:?} doesn't belong to this shard!", key);
             error!("{}", error);
             InternodeResponse::Error {
-                key: key.clone().to_owned(),
+                key: key.to_owned(),
                 message: error,
             }
         }
@@ -109,7 +109,7 @@ impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
                                         key);
                     error!("{}", error);
                     InternodeResponse::Error {
-                        key: key.clone().to_owned(),
+                        key: key.to_owned(),
                         message: error,
                     }
                 }
@@ -118,10 +118,10 @@ impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
                     debug!("key: {:?}", key);
                     debug!("timestamp: {:?}", timestamp);
                     let map = &self.map;
-                    map.insert(key.clone().to_owned(), value.clone().to_owned());
+                    map.insert(key.to_owned(), value.to_owned());
                     InternodeResponse::WriteAck {
                         key: key.to_owned(),
-                        timestamp: timestamp.clone().to_owned(),
+                        timestamp: timestamp.to_owned(),
                     }
                 }
             }
@@ -129,7 +129,7 @@ impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
             let error = format!("{:?} doesn't belong to this shard!", key);
             error!("{}", error);
             InternodeResponse::Error {
-                key: key.clone().to_owned(),
+                key: key.to_owned(),
                 message: error,
             }
         }

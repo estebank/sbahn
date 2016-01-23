@@ -52,7 +52,7 @@ fn read_one(key: &Key,
                 Err(_) => {
                     let r = ResponseMessage {
                         message: Response::Error {
-                            key: key.clone().to_owned(),
+                            key: key.to_owned(),
                             message: "All the storage nodes replied with errors.".to_string(),
                         },
                         consistency: Consistency::One,
@@ -64,7 +64,7 @@ fn read_one(key: &Key,
         None => {
             let r = ResponseMessage {
                 message: Response::Error {
-                    key: key.clone().to_owned(),
+                    key: key.to_owned(),
                     message: "All the storage nodes replied with errors.".to_string(),
                 },
                 consistency: Consistency::One,
@@ -116,7 +116,7 @@ fn read_latest(key: &Key,
         None => {
             let r = ResponseMessage {
                 message: Response::Error {
-                    key: key.clone().to_owned(),
+                    key: key.to_owned(),
                     message: "?".to_string(),
                 },
                 consistency: Consistency::Latest,
@@ -159,7 +159,7 @@ fn write(shards: &Vec<String>,
         responses.push(response);
     }
     let mut message = Response::Error {
-        key: key.clone().to_owned(),
+        key: key.to_owned(),
         message: "Quorum write could not be accomplished.".to_string(),
     };
 
@@ -187,7 +187,7 @@ fn write(shards: &Vec<String>,
     }
     let r = ResponseMessage {
         message: message,
-        consistency: consistency.clone().to_owned(),
+        consistency: consistency.to_owned(),
     };
 
     Ok(r)
@@ -210,8 +210,8 @@ fn write_to_other_storage_node(target: &str,
            key,
            target);
     let request = InternodeRequest::Write {
-        key: key.clone().to_owned(),
-        value: value.clone().to_owned(),
+        key: key.to_owned(),
+        value: value.to_owned(),
     };
     client::Client::send_to_node(target, &request)
 }
@@ -237,7 +237,7 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
         }
         Action::Write {key, content} => {
             let value = Value::Value {
-                content: content.clone().to_owned(),
+                content: content.to_owned(),
                 timestamp: timestamp,
             };
             let msg_shard = key.shard(shards.len());
@@ -290,7 +290,7 @@ pub fn listen(address: &str, shards: &Vec<Vec<String>>) -> Future<(), ()> {
 
         // Accept connections and process them, spawning a new thread for each one.
         for stream in listener.incoming() {
-            let shards = shards.clone().to_owned();
+            let shards = shards.to_owned();
             match stream {
                 Ok(stream) => {
                     thread::spawn(move || {

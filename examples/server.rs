@@ -34,7 +34,7 @@ fn main() {
     // Create SHARD_SIZE storage nodes.
     for (pos, addresses) in x.enumerate() {
         for addr in addresses {
-            let addr = addr.clone().to_owned();
+            let addr = addr.to_owned();
             let shard_count = shards.len();
             thread::spawn(move || {
                 println!("Storage Node {:?} @ {:?}", &pos, &addr);
