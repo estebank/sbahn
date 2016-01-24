@@ -1,4 +1,4 @@
-# sbahn: Pure Rust Distributed Hash Table
+# sbahn: Pure Rust Distributed Hash Table [![Build Status](https://travis-ci.org/estebank/sbahn.svg?branch=master)](https://travis-ci.org/estebank/sbahn)
 
 sbahn is a toy implementation of a [Distributed][1] [Hash][2] [Table][3].
 
