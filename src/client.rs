@@ -1,9 +1,8 @@
 use std::fmt::Debug;
 use std::io::prelude::*;
 use std::net::TcpStream;
-use constants::BUFFER_SIZE;
 use eventual::*;
-use message::{Error, Request, Result, ResponseMessage};
+use message::{Buffer, Error, Request, Result, ResponseMessage};
 use bincode::rustc_serialize::{encode, decode};
 use rustc_serialize::{Encodable, Decodable};
 use bincode::SizeLimit;
@@ -61,12 +60,10 @@ impl Client {
                     if stream.write(&message).is_err() {
                         return Err(Error::ConnectionError);
                     }
-                    let mut buf = [0; BUFFER_SIZE];
-                    if stream.read(&mut buf).is_err() {
+                    let mut val: Buffer = vec![];
+                    if stream.read_to_end(&mut val).is_err() {
                         return Err(Error::ConnectionError);
                     }
-                    let val = buf.iter().cloned().collect();
-                    debug!("Response from {:?}: {:?}", target, val);
                     Ok(val)
                 }
                 Err(e) => {

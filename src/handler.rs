@@ -1,9 +1,9 @@
 use bincode::SizeLimit;
 use bincode::rustc_serialize::{encode, decode};
 use client;
-use constants::BUFFER_SIZE;
 use eventual::*;
 use message::*;
+use network::NetworkRead;
 use std::fmt::Debug;
 use std::io::Read;
 use std::io::Write;
@@ -44,12 +44,19 @@ fn read_one(key: &Key,
         consistency: Consistency::One,
     };
 
-    Ok(responses_future.await().unwrap().pop().map(|response|
-        response.map(|m| ResponseMessage {
-            message: m.to_response(),
-            consistency: Consistency::One,
-        }).unwrap_or(error_message.to_owned()))
-        .unwrap_or(error_message.to_owned()))
+    Ok(responses_future.await()
+                       .unwrap()
+                       .pop()
+                       .map(|response| {
+                           response.map(|m| {
+                                       ResponseMessage {
+                                           message: m.to_response(),
+                                           consistency: Consistency::One,
+                                       }
+                                   })
+                                   .unwrap_or(error_message.to_owned())
+                       })
+                       .unwrap_or(error_message.to_owned()))
 }
 
 /// Obtain the newest `Value` among those stored in this shard's `StorageNode`s.
@@ -195,10 +202,13 @@ fn write_to_other_storage_node(target: &str,
 /// Perform a client's `Request` in the appropriate shard and respond to the
 /// client with a ResponseMessage.
 pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
-    let mut buf = [0; BUFFER_SIZE];
-    &stream.read(&mut buf);
+    let mut value: Buffer = vec![];
 
-    let m: Request = match decode(&buf) {
+    if stream.read_to_message_end(&mut value).is_err() {
+        panic!("Couldn't read from stream.");
+    }
+
+    let m: Request = match decode(&value) {
         Ok(m) => m,
         Err(e) => panic!("Message decoding error! {:?}", e),
     };

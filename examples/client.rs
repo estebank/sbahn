@@ -26,11 +26,11 @@ fn main() {
     let messages = vec![
         message::Action::Write {
             key: key.to_owned(),
-            content: vec![1],
+            content: vec![1, 2, 3],
         },
         message::Action::Write {
             key: key.to_owned(),
-            content: vec![2],
+            content: vec![4, 5, 6],
         },
         message::Action::Read {
             key: key.to_owned(),
@@ -40,7 +40,7 @@ fn main() {
         },
         message::Action::Write {
             key: key2.to_owned(),
-            content: vec![101],
+            content: vec![0; 2048],
         },
         message::Action::Read {
             key: key2.to_owned(),

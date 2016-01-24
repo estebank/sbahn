@@ -1,13 +1,13 @@
 use bincode::SizeLimit;
 use bincode::rustc_serialize::{encode, decode};
-use constants::BUFFER_SIZE;
-use message::{Key, Value, InternodeRequest, InternodeResponse};
-use storage::StorageBackend;
+use message::{Buffer, Key, Value, InternodeRequest, InternodeResponse};
+use network::NetworkRead;
 use std::io::Read;
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
+use storage::StorageBackend;
 
 pub struct StorageNode<Backend: StorageBackend + 'static> {
     pub shard: usize,
@@ -39,9 +39,12 @@ impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
     }
 
     pub fn handle_client(&mut self) {
-        let mut buf = [0; BUFFER_SIZE];
-        let _ = self.stream.read(&mut buf);
-        let m: InternodeRequest = match decode(&buf) {
+        let mut value: Buffer = vec![];
+        if self.stream.read_to_message_end(&mut value).is_err() {
+            panic!("Couldn't read from stream.");
+        }
+
+        let m: InternodeRequest = match decode(&value) {
             Ok(m) => m,
             Err(_) => panic!("decoding error!"),
         };
