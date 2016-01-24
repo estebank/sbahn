@@ -42,7 +42,7 @@ impl Client {
                                 Err(_) => Err(Error::DecodeError),
                             }
                         }
-                        Err(_) => Err(Error::DecodeError),
+                        Err(e) => Err(e),
                     }
                 })
             }

@@ -5,56 +5,66 @@ use eventual::*;
 use sbahn::client;
 use sbahn::handler;
 use sbahn::message::*;
-use sbahn::message;
 use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::thread;
 
+
+static mut port: u16 = 1400;
+fn get_port() -> u16 {
+    let mut p = 0;
+    unsafe {
+        port += 1;
+        p = port;
+    }
+    p
+}
+
+fn get_storage_node<'a>(pos: usize, shard_count: usize) -> SocketAddrV4 {
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), get_port());
+    let mut sn: StorageNode<HashMapBackend> = StorageNode::new(&addr, pos, shard_count);
+    thread::spawn(move || {
+        &sn.listen();
+    });
+    thread::sleep_ms(100);  // Wait for storage node to start listening
+    addr
+}
+
 #[test]
 fn end_to_end() {
-    let shards: Vec<Vec<SocketAddrV4>> = vec![
-        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1024), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1025), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1026)],
-        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1027), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1028), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1029)],
-        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1030), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1031), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1032)],
-    ];
+    let mut shards: Vec<Vec<SocketAddrV4>> = vec![];
+    for i in 0..3 {
+        let mut shard: Vec<SocketAddrV4> = vec![];
+        for _ in 0..3 {
+            shard.push(get_storage_node(i, 3));
+        }
+        shards.push(shard);
+    }
 
     let e = &shards;
     let z = e.clone();
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), get_port());
     thread::spawn(move || {
-        let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1100);
         let _shards = &z.to_owned();
         let _ = handler::listen(&addr, &_shards);
     });
-
-    let y = &shards.clone();
-    let x = y.iter();
-    for (pos, addresses) in x.enumerate() {
-        for addr in addresses {
-            let addr = addr.to_owned();
-            let shard_count = shards.len();
-            thread::spawn(move || {
-                let mut sn: StorageNode<HashMapBackend>= StorageNode::new(&addr, pos, shard_count);
-                &sn.listen();
-            });
-        }
-    }
+    thread::sleep_ms(100);  // Wait for handler node to start listening
 
     {
-        let target = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1100);
-        let insert_key = message::Key {
+        let insert_key = Key {
             dataset: vec![1, 2, 3],
             pkey: vec![4, 5, 6],
             lkey: vec![7, 8, 9],
         };
-        let client = client::Client { handlers: vec![target] };
+        let client = client::Client { handlers: vec![addr] };
         {
-            let content = message::Request {
-                action: message::Action::Write {
+            let content = Request {
+                action: Action::Write {
                     key: insert_key.to_owned(),
                     content: vec![1],
                 },
-                consistency: message::Consistency::Latest,
+                consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
             match r {
@@ -66,11 +76,11 @@ fn end_to_end() {
             }
         }
         {
-            let content = message::Request {
-                action: message::Action::Read {
+            let content = Request {
+                action: Action::Read {
                     key: insert_key.to_owned(),
                 },
-                consistency: message::Consistency::Latest,
+                consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
             match r {
@@ -88,11 +98,11 @@ fn end_to_end() {
             }
         }
         {
-            let content = message::Request {
-                action: message::Action::Delete {
+            let content = Request {
+                action: Action::Delete {
                     key: insert_key.to_owned(),
                 },
-                consistency: message::Consistency::Latest,
+                consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
             match r {
@@ -104,11 +114,11 @@ fn end_to_end() {
             }
         }
         {
-            let content = message::Request {
-                action: message::Action::Read {
+            let content = Request {
+                action: Action::Read {
                     key: insert_key.to_owned(),
                 },
-                consistency: message::Consistency::Latest,
+                consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
             match r {
