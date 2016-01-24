@@ -8,14 +8,15 @@ use sbahn::message::*;
 use sbahn::message;
 use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::thread;
 
 fn main() {
     let _ = env_logger::init();
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1050);
     thread::spawn(move || {
         let pos = 0;
-        let addr = "127.0.0.1:1050".to_string();
-        let mut sn: StorageNode<HashMapBackend>= StorageNode::new(addr, pos, 1);
+        let mut sn: StorageNode<HashMapBackend>= StorageNode::new(&addr, pos, 1);
         &sn.listen();
     });
     thread::sleep_ms(500);
@@ -33,7 +34,7 @@ fn main() {
                     timestamp: 10000000,
                 },
             };
-            let r = client::Client::send_to_node("127.0.0.1:1050", &content).await().unwrap();
+            let r = client::Client::send_to_node(&addr, &content).await().unwrap();
             match r {
                 Ok(r) => match r {
                     InternodeResponse::WriteAck {key, timestamp} => {

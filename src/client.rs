@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::io::prelude::*;
-use std::net::TcpStream;
+use std::net::{SocketAddrV4, TcpStream};
 use eventual::*;
 use message::{Buffer, Error, Request, Result, ResponseMessage};
 use bincode::rustc_serialize::{encode, decode};
@@ -10,13 +10,13 @@ use bincode::SizeLimit;
 /// An sbahn client.
 pub struct Client {
     /// List of addresses to frontend request handlers
-    pub handlers: Vec<String>,
+    pub handlers: Vec<SocketAddrV4>,
 }
 
 pub type MessageResult = Result<ResponseMessage>;
 
 impl Client {
-    pub fn new(handlers: Vec<String>) -> Client {
+    pub fn new(handlers: Vec<SocketAddrV4>) -> Client {
         Client { handlers: handlers }
     }
 
@@ -26,7 +26,7 @@ impl Client {
     }
 
     /// Sends a message that can be binary encoded to the Storage Node at `target`.
-    pub fn send_to_node<T, K>(target: &str, message: &T) -> Future<Result<K>, ()>
+    pub fn send_to_node<T, K>(target: &SocketAddrV4, message: &T) -> Future<Result<K>, ()>
         where T: Debug + Encodable,
               K: Debug + Decodable + Send
     {
@@ -51,10 +51,10 @@ impl Client {
     }
 
     /// Sends a binary encoded message to the Storage Node at `target`.
-    pub fn send_buffer(target: &str, message: Vec<u8>) -> Future<Result<Vec<u8>>, ()> {
+    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>) -> Future<Result<Vec<u8>>, ()> {
         let target = target.to_owned();
         Future::spawn(move || {
-            match TcpStream::connect(&*target) {
+            match TcpStream::connect(target) {
                 Ok(stream) => {
                     let mut stream = stream;
                     if stream.write(&message).is_err() {

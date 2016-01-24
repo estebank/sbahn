@@ -9,21 +9,17 @@ use sbahn::message;
 use sbahn::message::*;
 use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::thread;
 use rand::random;
 
 
-fn get_storage_node<'a>(shard_count: usize) -> String {
-    let port: u16 = random();
-    let a = "127.0.0.1:";
-    let a = a.to_string();
-    let a = a + &(port as u32 + 1000).to_string();
-    let addr = a.clone();
+fn get_storage_node<'a>(shard_count: usize) -> SocketAddrV4 {
+    let port: u8 = random();
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), (port as u16 + 1000));
     thread::spawn(move || {
         let pos = 0;
-        let addr = &*a;
-        let addr = &addr.to_owned().to_string();
-        let mut sn: StorageNode<HashMapBackend> = StorageNode::new(addr.clone(), pos, shard_count);
+        let mut sn: StorageNode<HashMapBackend> = StorageNode::new(&addr, pos, shard_count);
         &sn.listen();
     });
     thread::sleep_ms(500);  // Wait for storage node to start listening
@@ -34,7 +30,6 @@ fn get_storage_node<'a>(shard_count: usize) -> String {
 #[test]
 fn single_node() {
     let addr = get_storage_node(1);
-    let addr = &*addr;
 
     let insert_key = message::Key {
         dataset: vec![1, 2, 3],
@@ -91,18 +86,18 @@ fn single_node() {
 
 #[test]
 fn read_my_writes() {
-    let shards: Vec<Vec<String>> = vec![
-        vec!["127.0.0.1:1024".to_string(), "127.0.0.1:1025".to_string(), "127.0.0.1:1026".to_string()],
-        vec!["127.0.0.1:1027".to_string(), "127.0.0.1:1028".to_string(), "127.0.0.1:1029".to_string()],
-        vec!["127.0.0.1:1030".to_string(), "127.0.0.1:1031".to_string(), "127.0.0.1:1032".to_string()],
+    let shards: Vec<Vec<SocketAddrV4>> = vec![
+        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1024), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1025), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1026)],
+        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1027), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1028), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1029)],
+        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1030), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1031), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1032)],
     ];
 
     let e = &shards;
     let z = e.clone();
     thread::spawn(move || {
-        let addr = "127.0.0.1:1100";
+        let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1100);
         let _shards = &z.to_owned();
-        let _ = handler::listen(addr, &_shards);
+        let _ = handler::listen(&addr, &_shards);
     });
 
     let y = &shards.clone();
@@ -112,14 +107,14 @@ fn read_my_writes() {
             let addr = addr.to_owned();
             let shard_count = shards.len();
             thread::spawn(move || {
-                let mut sn: StorageNode<HashMapBackend> = StorageNode::new(addr, pos, shard_count);
+                let mut sn: StorageNode<HashMapBackend> = StorageNode::new(&addr, pos, shard_count);
                 &sn.listen();
             });
         }
     }
 
     {
-        let target = "127.0.0.1:1100".to_string();
+        let target = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1100);
         let insert_key = message::Key {
             dataset: vec![1, 2, 3],
             pkey: vec![4, 5, 6],

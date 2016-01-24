@@ -7,12 +7,13 @@ extern crate sbahn;
 use sbahn::client;
 use sbahn::message;
 use eventual::*;
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 
 fn main() {
     let _ = env_logger::init();
 
-    let target = "127.0.0.1:1100".to_string();
+    let target = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1100);
     let key = message::Key {
         dataset: vec![1, 2, 3],
         pkey: vec![4, 5, 6],

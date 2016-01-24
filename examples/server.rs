@@ -6,25 +6,26 @@ extern crate env_logger;
 use sbahn::handler;
 use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::thread;
 
 fn main() {
     let _ = env_logger::init();
 
-    let shards: Vec<Vec<String>> = vec![
-        vec!["127.0.0.1:1024".to_string(), "127.0.0.1:1025".to_string(), "127.0.0.1:1026".to_string()],
-        vec!["127.0.0.1:1027".to_string(), "127.0.0.1:1028".to_string(), "127.0.0.1:1029".to_string()],
-        vec!["127.0.0.1:1030".to_string(), "127.0.0.1:1031".to_string(), "127.0.0.1:1032".to_string()],
+    let shards: Vec<Vec<SocketAddrV4>> = vec![
+        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1024), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1025), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1026)],
+        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1027), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1028), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1029)],
+        vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1030), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1031), SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1032)],
     ];
 
     let e = &shards;
     let z = e.clone();
 
     thread::spawn(move || {
-        let addr = "127.0.0.1:1100";
+        let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1100);
         let _shards = &z.to_owned();
         println!("Handler Node @ {:?}", &addr);
-        let _ = handler::listen(addr, &_shards);
+        let _ = handler::listen(&addr, &_shards);
     });
 
     let y = &shards.clone();
@@ -38,7 +39,7 @@ fn main() {
             let shard_count = shards.len();
             thread::spawn(move || {
                 println!("Storage Node {:?} @ {:?}", &pos, &addr);
-                let mut sn: StorageNode<HashMapBackend>= StorageNode::new(addr, pos, shard_count);
+                let mut sn: StorageNode<HashMapBackend>= StorageNode::new(&addr, pos, shard_count);
                 &sn.listen();
             });
         }

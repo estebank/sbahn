@@ -7,7 +7,7 @@ use network::NetworkRead;
 use std::fmt::Debug;
 use std::io::Read;
 use std::io::Write;
-use std::net::{TcpListener, TcpStream};
+use std::net::{SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
 use time;
 
@@ -111,11 +111,11 @@ fn read_latest(key: &Key,
 
 /// Read from all nodes for this `Key`'s shard, and use `consistency` to
 /// collate the `StorageNode`'s responses.
-fn read(shards: &Vec<String>, key: &Key, consistency: &Consistency) -> client::MessageResult {
+fn read(shards: &Vec<SocketAddrV4>, key: &Key, consistency: &Consistency) -> client::MessageResult {
     debug!("Read {:?} with {:?} consistency.", key, consistency);
     let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
     for shard in shards {
-        let response = read_from_other_storage_node(&*shard, &key);
+        let response = read_from_other_storage_node(&shard, &key);
         responses.push(response);
     }
     match consistency {
@@ -126,14 +126,14 @@ fn read(shards: &Vec<String>, key: &Key, consistency: &Consistency) -> client::M
 
 /// Write to all nodes for this `Key`'s shard, and use `consistency` to
 /// determine when to acknowledge the write to the client.
-fn write(shards: &Vec<String>,
+fn write(shards: &Vec<SocketAddrV4>,
          key: &Key,
          value: &Value,
          consistency: &Consistency)
          -> client::MessageResult {
     let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
     for shard in shards {
-        let response = write_to_other_storage_node(&*shard, &key, &value);
+        let response = write_to_other_storage_node(&shard, &key, &value);
         debug!("Write response for {:?}, {:?} @ Shard {:?}: {:?}",
                key,
                value,
@@ -177,7 +177,9 @@ fn write(shards: &Vec<String>,
 }
 
 
-fn read_from_other_storage_node(target: &str, key: &Key) -> Future<Result<InternodeResponse>, ()> {
+fn read_from_other_storage_node(target: &SocketAddrV4,
+                                key: &Key)
+                                -> Future<Result<InternodeResponse>, ()> {
     debug!("Forwarding read request for {:?} to shard at {:?}.",
            key,
            target);
@@ -185,7 +187,7 @@ fn read_from_other_storage_node(target: &str, key: &Key) -> Future<Result<Intern
     client::Client::send_to_node(target, &content)
 }
 
-fn write_to_other_storage_node(target: &str,
+fn write_to_other_storage_node(target: &SocketAddrV4,
                                key: &Key,
                                value: &Value)
                                -> Future<Result<InternodeResponse>, ()> {
@@ -201,7 +203,7 @@ fn write_to_other_storage_node(target: &str,
 
 /// Perform a client's `Request` in the appropriate shard and respond to the
 /// client with a ResponseMessage.
-pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
+pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<SocketAddrV4>>) {
     let mut value: Buffer = vec![];
 
     if stream.read_to_message_end(&mut value).is_err() {
@@ -255,24 +257,24 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<String>>) {
 
 
 trait ClientHandler where Self: Debug {
-    fn handle(&mut self, shards: &Vec<Vec<String>>);
+    fn handle(&mut self, shards: &Vec<Vec<SocketAddrV4>>);
 }
 
 /// An sbahn aware stream
 impl ClientHandler for TcpStream {
-    fn handle(&mut self, shards: &Vec<Vec<String>>) {
+    fn handle(&mut self, shards: &Vec<Vec<SocketAddrV4>>) {
         debug!("Starting listener stream: {:?}", self);
         handle_client(self, &shards);
     }
 }
 
 /// Listen on `address` for incoming client requests, and perform them on the appropriate shards.
-pub fn listen(address: &str, shards: &Vec<Vec<String>>) -> Future<(), ()> {
+pub fn listen(address: &SocketAddrV4, shards: &Vec<Vec<SocketAddrV4>>) -> Future<(), ()> {
     let address = address.to_owned();
     let shards = shards.clone();
 
     Future::spawn(move || {
-        let listener = TcpListener::bind(&*address).unwrap();
+        let listener = TcpListener::bind(&address).unwrap();
 
         // Accept connections and process them, spawning a new thread for each one.
         for stream in listener.incoming() {

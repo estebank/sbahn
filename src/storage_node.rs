@@ -4,7 +4,7 @@ use message::{Buffer, Key, Value, InternodeRequest, InternodeResponse};
 use network::NetworkRead;
 use std::io::Read;
 use std::io::Write;
-use std::net::{TcpListener, TcpStream};
+use std::net::{SocketAddrV4, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
 use storage::StorageBackend;
@@ -12,7 +12,7 @@ use storage::StorageBackend;
 pub struct StorageNode<Backend: StorageBackend + 'static> {
     pub shard: usize,
     pub shard_count: usize,
-    pub address: String,
+    pub address: SocketAddrV4,
     pub map: Arc<Backend>,
 }
 
@@ -140,7 +140,7 @@ impl<Backend: StorageBackend + 'static> ClientHandler<Backend> {
 }
 
 impl<Backend: StorageBackend + 'static> StorageNode<Backend> {
-    pub fn new(local_address: String,
+    pub fn new(local_address: &SocketAddrV4,
                shard_number: usize,
                shard_count: usize)
                -> StorageNode<Backend> {
@@ -148,16 +148,19 @@ impl<Backend: StorageBackend + 'static> StorageNode<Backend> {
         StorageNode {
             shard: shard_number,
             shard_count: shard_count,
-            address: local_address,
+            address: local_address.to_owned(),
             map: map,
         }
     }
 
     pub fn listen(&mut self) {
-        let address = &*self.address;
-        let listener = match TcpListener::bind(address) {
+        let listener = match TcpListener::bind(self.address) {
             Ok(l) => l,
-            Err(e) => panic!("Error binding this storage node @ {:?}: {:?}", address, e),
+            Err(e) => {
+                panic!("Error binding this storage node @ {:?}: {:?}",
+                       self.address,
+                       e)
+            }
         };
 
         // accept connections and process them, spawning a new thread for each one
