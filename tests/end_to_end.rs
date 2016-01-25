@@ -57,7 +57,7 @@ fn end_to_end() {
             pkey: vec![4, 5, 6],
             lkey: vec![7, 8, 9],
         };
-        let client = client::Client { handlers: vec![addr] };
+        let client = client::Client::new(vec![addr]);
         {
             let content = Request {
                 action: Action::Write {

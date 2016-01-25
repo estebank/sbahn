@@ -9,6 +9,7 @@ use std::io::Read;
 use std::io::Write;
 use std::net::{SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
+use std::time::Duration;
 use time;
 
 
@@ -155,7 +156,7 @@ fn write(shards: &Vec<SocketAddrV4>,
                     InternodeResponse::WriteAck {key, timestamp} => {
                         write_count += 1;
                         if write_count >= (shards.len() / 2) + 1 {
-                            debug!("Successfull write to mayority of shards for {:?}", key);
+                            debug!("Successful write to mayority of shards for {:?}", key);
                             message = Response::WriteAck {
                                 key: key,
                                 timestamp: timestamp,
@@ -210,18 +211,18 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<SocketAddrV4>>) {
         panic!("Couldn't read from stream.");
     }
 
-    let m: Request = match decode(&value) {
+    let request: Request = match decode(&value) {
         Ok(m) => m,
         Err(e) => panic!("Message decoding error! {:?}", e),
     };
 
-    debug!("Message received: {:?}", m);
+    debug!("Message received: {:?}", request);
 
     let timestamp = get_now();
-    let r = match m.action {
+    let r = match request.action {
         Action::Read {key} => {
             let msg_shard = key.shard(shards.len());
-            read(&shards[msg_shard], &key, &m.consistency)
+            read(&shards[msg_shard], &key, &request.consistency)
         }
         Action::Write {key, content} => {
             let value = Value::Value {
@@ -229,12 +230,12 @@ pub fn handle_client(stream: &mut TcpStream, shards: &Vec<Vec<SocketAddrV4>>) {
                 timestamp: timestamp,
             };
             let msg_shard = key.shard(shards.len());
-            write(&shards[msg_shard], &key, &value, &m.consistency)
+            write(&shards[msg_shard], &key, &value, &request.consistency)
         }
         Action::Delete {key} => {
             let value = Value::Tombstone { timestamp: timestamp };
             let msg_shard = key.shard(shards.len());
-            write(&shards[msg_shard], &key, &value, &m.consistency)
+            write(&shards[msg_shard], &key, &value, &request.consistency)
         }
     };
     debug!("Response to be sent: {:?}", r);
@@ -273,6 +274,9 @@ pub fn listen(address: &SocketAddrV4, shards: &Vec<Vec<SocketAddrV4>>) -> Future
     let address = address.to_owned();
     let shards = shards.clone();
 
+    let read_timeout = Some(Duration::from_millis(300));
+    let write_timeout = Some(Duration::from_millis(300));
+
     Future::spawn(move || {
         let listener = TcpListener::bind(&address).unwrap();
 
@@ -281,6 +285,8 @@ pub fn listen(address: &SocketAddrV4, shards: &Vec<Vec<SocketAddrV4>>) -> Future
             let shards = shards.to_owned();
             match stream {
                 Ok(stream) => {
+                    let _ = stream.set_read_timeout(read_timeout);
+                    let _ = stream.set_write_timeout(write_timeout);
                     thread::spawn(move || {
                         // connection succeeded
                         let mut stream = stream;

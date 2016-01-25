@@ -54,7 +54,7 @@ fn main() {
         },
     ];
 
-    let client = client::Client { handlers: vec![target] };
+    let client = client::Client::new(vec![target]);
 
     for m in messages {
         let content = message::Request {

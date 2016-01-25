@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::io::prelude::*;
 use std::net::{SocketAddrV4, TcpStream};
+use std::time::Duration;
 use eventual::*;
 use message::{Buffer, Error, Request, Result, ResponseMessage};
 use bincode::rustc_serialize::{encode, decode};
@@ -11,13 +12,27 @@ use bincode::SizeLimit;
 pub struct Client {
     /// List of addresses to frontend request handlers
     pub handlers: Vec<SocketAddrV4>,
+    pub read_timeout: Option<Duration>,
+    pub write_timeout: Option<Duration>,
 }
 
 pub type MessageResult = Result<ResponseMessage>;
 
 impl Client {
     pub fn new(handlers: Vec<SocketAddrV4>) -> Client {
-        Client { handlers: handlers }
+        Client {
+            handlers: handlers,
+            read_timeout: Some(Duration::from_millis(300)),
+            write_timeout: Some(Duration::from_millis(300)),
+        }
+    }
+
+    pub fn with_timeouts(handlers: Vec<SocketAddrV4>, read_timeout: Duration, write_timeout: Duration) -> Client {
+        Client {
+            handlers: handlers,
+            read_timeout: Some(read_timeout),
+            write_timeout: Some(write_timeout),
+        }
     }
 
     pub fn send(&self, message: &Request) -> Future<MessageResult, ()> {
@@ -30,11 +45,18 @@ impl Client {
         where T: Debug + Encodable,
               K: Debug + Decodable + Send
     {
+        Self::send_to_node_with_timeout(target, message, None)
+    }
 
+    /// Sends a message that can be binary encoded to the Storage Node at `target`.
+    pub fn send_to_node_with_timeout<T, K>(target: &SocketAddrV4, message: &T, timeout: Option<Duration>) -> Future<Result<K>, ()>
+        where T: Debug + Encodable,
+              K: Debug + Decodable + Send
+    {
         debug!("sending message {:?} to node {:?}", message, target);
         match encode(&message, SizeLimit::Infinite) {
             Ok(content) => {
-                Self::send_buffer(target, content).map(|buffer| {
+                Self::send_buffer(target, content, timeout).map(|buffer| {
                     match buffer {
                         Ok(x) => {
                             match decode(&x) {
@@ -51,11 +73,14 @@ impl Client {
     }
 
     /// Sends a binary encoded message to the Storage Node at `target`.
-    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>) -> Future<Result<Vec<u8>>, ()> {
+    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>, timeout: Option<Duration>) -> Future<Result<Vec<u8>>, ()> {
         let target = target.to_owned();
         Future::spawn(move || {
             match TcpStream::connect(target) {
                 Ok(stream) => {
+                    let _ = stream.set_read_timeout(timeout);
+                    let _ = stream.set_write_timeout(timeout);
+
                     let mut stream = stream;
                     if stream.write(&message).is_err() {
                         return Err(Error::ConnectionError);
@@ -72,5 +97,10 @@ impl Client {
                 }
             }
         })
+    }
+
+    pub fn set_timeouts(&mut self, timeout: Duration) {
+        self.read_timeout = Some(timeout);
+        self.write_timeout = Some(timeout);
     }
 }
