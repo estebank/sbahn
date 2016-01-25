@@ -10,6 +10,7 @@ use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::thread;
+use std::time::Duration;
 
 fn main() {
     let _ = env_logger::init();
@@ -19,7 +20,7 @@ fn main() {
         let mut sn: StorageNode<HashMapBackend>= StorageNode::new(&addr, pos, 1);
         &sn.listen();
     });
-    thread::sleep_ms(500);
+    thread::sleep(Duration::from_millis(500));
     for i in 0..255 {
         let insert_key = message::Key {
             dataset: vec![1, 2, 3],

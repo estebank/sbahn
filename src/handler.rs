@@ -5,7 +5,6 @@ use eventual::*;
 use message::*;
 use network::NetworkRead;
 use std::fmt::Debug;
-use std::io::Read;
 use std::io::Write;
 use std::net::{SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
