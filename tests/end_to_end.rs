@@ -9,11 +9,12 @@ use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::thread;
+use std::time::Duration;
 
 
 static mut port: u16 = 1400;
 fn get_port() -> u16 {
-    let mut p = 0;
+    let p;
     unsafe {
         port += 1;
         p = port;
@@ -27,7 +28,7 @@ fn get_storage_node<'a>(pos: usize, shard_count: usize) -> SocketAddrV4 {
     thread::spawn(move || {
         &sn.listen();
     });
-    thread::sleep_ms(100);  // Wait for storage node to start listening
+    thread::sleep(Duration::from_millis(100));  // Wait for storage node to start listening
     addr
 }
 
@@ -49,7 +50,7 @@ fn end_to_end() {
         let _shards = &z.to_owned();
         let _ = handler::listen(&addr, &_shards);
     });
-    thread::sleep_ms(100);  // Wait for handler node to start listening
+    thread::sleep(Duration::from_millis(100));  // Wait for handler node to start listening
 
     {
         let insert_key = Key {
