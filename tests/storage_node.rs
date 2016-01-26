@@ -11,12 +11,18 @@ use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::thread;
 use std::time::Duration;
 
+// Milis to wait before trying to connect to any node.
+static DELAY: u64 = 20;
 
+static mut PORT: u16 = 1100;
 /// Obtain an open port
 fn get_port() -> u16 {
-    let mut port = 1200;
+    let mut port = 0;
     loop {
-        port += 1;
+        unsafe {
+          PORT += 1;
+          port = PORT;
+        }
         let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
         if TcpListener::bind(&addr).is_ok() {
             // Check wether the port is open, and only return it if it is.
@@ -25,14 +31,125 @@ fn get_port() -> u16 {
     }
 }
 
-fn get_storage_node<'a>(pos: usize, shard_count: usize) -> SocketAddrV4 {
+fn get_storage_node(pos: usize, shard_count: usize) -> SocketAddrV4 {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), get_port());
     let mut sn: StorageNode<HashMapBackend> = StorageNode::new(&addr, pos, shard_count);
     thread::spawn(move || {
         &sn.listen();
     });
-    thread::sleep(Duration::from_millis(100));  // Wait for storage node to start listening
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
     addr
+}
+
+fn setup_handler_node(shards: &Vec<Vec<SocketAddrV4>>) -> SocketAddrV4 {
+    let shards = shards.clone();
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), get_port());
+    thread::spawn(move || {
+        let _ = handler::listen(&addr, &shards);
+    });
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for handler node to start listening
+    addr
+}
+
+fn setup_cluster() -> (SocketAddrV4, Vec<Vec<SocketAddrV4>>) {
+    let mut shards: Vec<Vec<SocketAddrV4>> = vec![];
+    for i in 0..3 {
+        let mut shard: Vec<SocketAddrV4> = vec![];
+        for _ in 0..3 {
+            shard.push(get_storage_node(i, 3));
+        }
+        shards.push(shard);
+    }
+
+    (setup_handler_node(&shards), shards)
+}
+
+#[test]
+fn read_consistency_one_all_nodes_available() {
+    // Should succeed
+    let (handler_addr, shards) = setup_cluster();
+
+    let local_key = Key {
+        dataset: vec![1, 2, 3],
+        pkey: vec![4, 5, 6],
+        lkey: vec![7, 8, 9],
+    };
+    let local_value: Vec<u8> = vec![9, 8, 7];
+
+    let client = client::Client::new(vec![handler_addr]);
+    let r = client.insert(&local_key, &local_value);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::WriteAck {key, ..} => assert_eq!(key, local_key),
+        _ => assert!(false),
+    }
+    let r = client.get(&local_key);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Value {key, value} => {
+            assert_eq!(key, local_key);
+            match value {
+                Value::Value {content, ..} => assert_eq!(content, local_value),
+                _ => assert!(false),
+            }
+        },
+        _ => assert!(false),
+    }
+}
+
+#[test]
+fn read_consistency_one_one_node_available() {
+    // Should succeed
+}
+
+#[test]
+fn read_consistency_one_no_nodes_available() {
+    // Should fail
+}
+
+#[test]
+fn read_consistency_latest_all_same() {
+    // Should succeed
+}
+
+#[test]
+fn read_consistency_latest_all_different() {
+    // Should succeed
+}
+
+#[test]
+fn read_consistency_latest_one_node_available() {
+    // Should fail
+}
+
+#[test]
+fn write_consistency_one_all_available() {
+    // Should succeed
+}
+
+#[test]
+fn write_consistency_one_none_available() {
+    // Should fail
+}
+
+#[test]
+fn write_consistency_latest_all_available() {
+    // Should succeed
+}
+
+#[test]
+fn write_consistency_latest_quorum_available() {
+    // Should succeed
+}
+
+#[test]
+fn write_consistency_latest_one_available() {
+    // Should fail
+}
+
+#[test]
+fn write_consistency_latest_none_available() {
+    // Should fail
 }
 
 #[test]
@@ -106,7 +223,7 @@ fn read_my_writes() {
         let _shards = &z.to_owned();
         let _ = handler::listen(&addr, &_shards);
     });
-    thread::sleep(Duration::from_millis(100));  // Wait for handler node to start listening
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for handler node to start listening
 
     {
         let insert_key = Key {

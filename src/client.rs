@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::net::{SocketAddrV4, TcpStream};
 use std::time::Duration;
 use eventual::*;
-use message::{Buffer, Error, Request, Result, ResponseMessage};
+use message::{Action, Buffer, Consistency, Error, Key, Request, Result, ResponseMessage};
 use bincode::rustc_serialize::{encode, decode};
 use rustc_serialize::{Encodable, Decodable};
 use bincode::SizeLimit;
@@ -14,6 +14,7 @@ pub struct Client {
     pub handlers: Vec<SocketAddrV4>,
     pub read_timeout: Option<Duration>,
     pub write_timeout: Option<Duration>,
+    pub consistency: Consistency,
 }
 
 pub type MessageResult = Result<ResponseMessage>;
@@ -24,6 +25,7 @@ impl Client {
             handlers: handlers,
             read_timeout: Some(Duration::from_millis(300)),
             write_timeout: Some(Duration::from_millis(300)),
+            consistency: Consistency::Latest,
         }
     }
 
@@ -35,7 +37,29 @@ impl Client {
             handlers: handlers,
             read_timeout: Some(read_timeout),
             write_timeout: Some(write_timeout),
+            consistency: Consistency::Latest,
         }
+    }
+
+    pub fn insert(&self, key: &Key, value: &Buffer) -> Future<ResponseMessage, Error> {
+        let content = Request {
+            action: Action::Write {
+                key: key.to_owned(),
+                content: value.to_owned(),
+            },
+            consistency: self.consistency.clone(),
+        };
+        self.send(&content)
+    }
+
+    pub fn get(&self, key: &Key) -> Future<ResponseMessage, Error> {
+        let content = Request {
+            action: Action::Read {
+                key: key.to_owned(),
+            },
+            consistency: self.consistency.clone(),
+        };
+        self.send(&content)
     }
 
     pub fn send(&self, message: &Request) -> Future<ResponseMessage, Error> {
