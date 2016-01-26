@@ -7,19 +7,22 @@ use sbahn::handler;
 use sbahn::message::*;
 use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::thread;
 use std::time::Duration;
 
 
-static mut port: u16 = 1200;
+/// Obtain an open port
 fn get_port() -> u16 {
-    let p;
-    unsafe {
+    let mut port = 1200;
+    loop {
         port += 1;
-        p = port;
+        let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
+        if TcpListener::bind(&addr).is_ok() {
+            // Check wether the port is open, and only return it if it is.
+            return port;
+        }
     }
-    p
 }
 
 fn get_storage_node<'a>(pos: usize, shard_count: usize) -> SocketAddrV4 {

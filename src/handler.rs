@@ -282,7 +282,5 @@ pub fn listen(address: &SocketAddrV4, shards: &Vec<Vec<SocketAddrV4>>) -> Future
                 Err(e) => error!("Connection failed!: {:?}", e),
             }
         }
-        // close the socket server
-        drop(listener);
     })
 }

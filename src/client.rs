@@ -49,14 +49,14 @@ impl Client {
     }
 
     /// Sends a message that can be binary encoded to the Storage Node at `target`.
-    pub fn send_to_node_with_timeout<T, K>(target: &SocketAddrV4, message: &T, timeout: Option<Duration>) -> Future<Result<K>, ()>
+    pub fn send_to_node_with_timeout<T, K>(target: &SocketAddrV4, message: &T, timeout: Option<Duration>) -> Future<K, Error>
         where T: Debug + Encodable,
               K: Debug + Decodable + Send
     {
         debug!("sending message {:?} to node {:?}", message, target);
         match encode(&message, SizeLimit::Infinite) {
             Ok(content) => {
-                Self::send_buffer(target, content).and_then(|x| {
+                Self::send_buffer(target, content, timeout).and_then(|x| {
                   match decode(&x) {
                       Ok(m) => Ok(m),
                       Err(_) => Err(Error::DecodeError),
@@ -68,7 +68,7 @@ impl Client {
     }
 
     /// Sends a binary encoded message to the Storage Node at `target`.
-    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>) -> Future<Vec<u8>, Error> {
+    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>, timeout: Option<Duration>) -> Future<Vec<u8>, Error> {
         let target = target.to_owned();
         Future::lazy(move || {
             match TcpStream::connect(target) {
