@@ -5,7 +5,6 @@ use eventual::*;
 use message::*;
 use network::NetworkRead;
 use std::fmt::Debug;
-use std::io::Read;
 use std::io::Write;
 use std::net::{SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
@@ -24,65 +23,53 @@ fn get_now() -> u64 {
 
 /// Obtain one (any) valid response from all the shard responses.
 fn read_one(key: &Key,
-            responses: Vec<Future<Result<InternodeResponse>, ()>>)
+            responses: Vec<Future<InternodeResponse, Error>>)
             -> client::MessageResult {
     debug!("Reading one");
 
-    let responses_future: Future<Vec<Result<InternodeResponse>>, ()> = sequence(responses)
-                                                                           .filter(|response| {
-                                                                               debug!("Future res\
-                                                                                       ponse {:?}",
-                                                                                      response);
-                                                                               response.is_ok()
-                                                                           })
-                                                                           .collect();
 
-    let error_message = ResponseMessage {
-        message: Response::Error {
-            key: key.to_owned(),
-            message: "All the storage nodes replied with errors.".to_string(),
-        },
-        consistency: Consistency::One,
-    };
-
-    Ok(responses_future.await()
-                       .unwrap()
-                       .pop()
-                       .map(|response| {
-                           response.map(|m| {
-                                       ResponseMessage {
-                                           message: m.to_response(),
-                                           consistency: Consistency::One,
-                                       }
-                                   })
-                                   .unwrap_or(error_message.to_owned())
-                       })
-                       .unwrap_or(error_message.to_owned()))
+    Ok(sequence(responses).await()
+        .unwrap()
+        .iter()
+        .next()
+        .map(|&(ref m, _)| {
+            ResponseMessage {
+                message: m.clone().to_response(),
+                consistency: Consistency::One,
+            }
+        })
+        .unwrap_or(ResponseMessage {
+            message: Response::Error {
+                key: key.to_owned(),
+                message: "All the storage nodes replied with errors.".to_string(),
+            },
+            consistency: Consistency::One,
+        })
+    )
 }
 
 /// Obtain the newest `Value` among those stored in this shard's `StorageNode`s.
 fn read_latest(key: &Key,
-               responses: Vec<Future<Result<InternodeResponse>, ()>>)
+                responses: Vec<Future<InternodeResponse, Error>>)
                -> client::MessageResult {
     debug!("Reading quorum");
 
     let latest: Option<InternodeResponse> = sequence(responses)
-                                                .reduce((0, None), |last, response| {
+                                                .reduce((0, None), |last, r| {
                                                     let (max_timestamp, max_response) = last;
                                                     debug!("Max timestamp so far: {:?}",
                                                            max_timestamp);
                                                     debug!("Max max_response so far: {:?}",
                                                            max_response);
-                                                    match response {
-                                                        Ok(r) => {
-                                                            let ts = r.get_timestamp().unwrap();
+                                                    match r.get_timestamp() {
+                                                        Some(ts) => {
                                                             if ts >= max_timestamp {
                                                                 (ts, Some(r.clone()))
                                                             } else {
                                                                 (max_timestamp, max_response)
                                                             }
-                                                        }
-                                                        Err(_) => (max_timestamp, max_response),
+                                                        },
+                                                        None => (max_timestamp, max_response),
                                                     }
                                                 })
                                                 .await()
@@ -114,7 +101,7 @@ fn read_latest(key: &Key,
 /// collate the `StorageNode`'s responses.
 fn read(shards: &Vec<SocketAddrV4>, key: &Key, consistency: &Consistency) -> client::MessageResult {
     debug!("Read {:?} with {:?} consistency.", key, consistency);
-    let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
+    let mut responses: Vec<Future<InternodeResponse, Error>> = vec![];
     for shard in shards {
         let response = read_from_other_storage_node(&shard, &key);
         responses.push(response);
@@ -132,7 +119,7 @@ fn write(shards: &Vec<SocketAddrV4>,
          value: &Value,
          consistency: &Consistency)
          -> client::MessageResult {
-    let mut responses: Vec<Future<Result<InternodeResponse>, ()>> = vec![];
+    let mut responses: Vec<Future<InternodeResponse, Error>> = vec![];
     for shard in shards {
         let response = write_to_other_storage_node(&shard, &key, &value);
         debug!("Write response for {:?}, {:?} @ Shard {:?}: {:?}",
@@ -149,8 +136,7 @@ fn write(shards: &Vec<SocketAddrV4>,
 
     let mut write_count = 0;
     for response_result in responses {
-        let response_result = response_result.await().ok().unwrap();
-        match response_result {
+        match response_result.await() {
             Ok(response) => {
                 match response {
                     InternodeResponse::WriteAck {key, timestamp} => {
@@ -180,7 +166,7 @@ fn write(shards: &Vec<SocketAddrV4>,
 
 fn read_from_other_storage_node(target: &SocketAddrV4,
                                 key: &Key)
-                                -> Future<Result<InternodeResponse>, ()> {
+                                -> Future<InternodeResponse, Error> {
     debug!("Forwarding read request for {:?} to shard at {:?}.",
            key,
            target);
@@ -191,7 +177,7 @@ fn read_from_other_storage_node(target: &SocketAddrV4,
 fn write_to_other_storage_node(target: &SocketAddrV4,
                                key: &Key,
                                value: &Value)
-                               -> Future<Result<InternodeResponse>, ()> {
+                               -> Future<InternodeResponse, Error> {
     debug!("Forwarding write request for {:?} to shard at {:?}.",
            key,
            target);

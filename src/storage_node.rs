@@ -2,7 +2,6 @@ use bincode::SizeLimit;
 use bincode::rustc_serialize::{encode, decode};
 use message::{Buffer, Key, Value, InternodeRequest, InternodeResponse};
 use network::NetworkRead;
-use std::io::Read;
 use std::io::Write;
 use std::net::{SocketAddrV4, TcpListener, TcpStream};
 use std::sync::Arc;

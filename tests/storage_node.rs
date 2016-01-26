@@ -9,11 +9,12 @@ use sbahn::storage::HashMapBackend;
 use sbahn::storage_node::StorageNode;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::thread;
+use std::time::Duration;
 
 
 static mut port: u16 = 1200;
 fn get_port() -> u16 {
-    let mut p = 0;
+    let p;
     unsafe {
         port += 1;
         p = port;
@@ -27,7 +28,7 @@ fn get_storage_node<'a>(pos: usize, shard_count: usize) -> SocketAddrV4 {
     thread::spawn(move || {
         &sn.listen();
     });
-    thread::sleep_ms(100);  // Wait for storage node to start listening
+    thread::sleep(Duration::from_millis(100));  // Wait for storage node to start listening
     addr
 }
 
@@ -49,17 +50,13 @@ fn single_node() {
             },
         };
         let addr = &addr.to_owned();
-        let r: Future<Result<InternodeResponse>, ()> = client::Client::send_to_node(addr, &content);
-        let r = r.await().unwrap();
-        match r {
-            Ok(r) => match r {
-                InternodeResponse::WriteAck {key, timestamp} => {
-                    assert_eq!(key, insert_key);
-                    assert_eq!(timestamp, 10000000);
-                },
-                e => {println!("{:?}", e); assert!(false)},
+        let r: Future<InternodeResponse, Error> = client::Client::send_to_node(addr, &content);
+        match r.await().unwrap() {
+            InternodeResponse::WriteAck {key, timestamp} => {
+                assert_eq!(key, insert_key);
+                assert_eq!(timestamp, 10000000);
             },
-            Err(_) => assert!(false),
+            e => panic!("{:?}", e),
         }
     }
     {
@@ -67,8 +64,8 @@ fn single_node() {
             key: insert_key.to_owned(),
         };
         let addr = &addr.to_owned();
-        let r: Future<Result<InternodeResponse>, ()> = client::Client::send_to_node(addr, &content);
-        let r = r.await().unwrap();
+        let r: Future<InternodeResponse, Error> = client::Client::send_to_node(addr, &content);
+        let r = r.await();
         match r {
             Ok(r) => match r {
                 InternodeResponse::Value {key, value} => {
@@ -78,12 +75,12 @@ fn single_node() {
                             assert_eq!(&content[..], &[1][..]);
                             assert_eq!(timestamp, 10000000);
                         },
-                        _ => assert!(false),
+                        _ => panic!(),
                     }
                 },
-                _ => assert!(false),
+                _ => panic!(),
             },
-            Err(_) => assert!(false),
+            Err(_) => panic!(),
         }
     }
 }
@@ -106,7 +103,7 @@ fn read_my_writes() {
         let _shards = &z.to_owned();
         let _ = handler::listen(&addr, &_shards);
     });
-    thread::sleep_ms(100);  // Wait for handler node to start listening
+    thread::sleep(Duration::from_millis(100));  // Wait for handler node to start listening
 
     {
         let insert_key = Key {
@@ -125,12 +122,9 @@ fn read_my_writes() {
             };
             let r = client.send(&content);
             let r = r.await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
-                    _ => assert!(false),
-                },
-                Err(_) => assert!(false),
+            match r.message {
+                Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
+                _ => panic!(),
             }
         }
         {
@@ -142,18 +136,15 @@ fn read_my_writes() {
             };
             let r = client.send(&content);
             let r = r.await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::Value {key, value} => {
-                        assert_eq!(key, insert_key);
-                        match value {
-                            Value::Value {content, ..} => assert_eq!(&content[..], &vec![1][..]),
-                            _ => assert!(false),
-                        }
-                    },
-                    _ => assert!(false),
+            match r.message {
+                Response::Value {key, value} => {
+                    assert_eq!(key, insert_key);
+                    match value {
+                        Value::Value {content, ..} => assert_eq!(&content[..], &vec![1][..]),
+                        _ => panic!(),
+                    }
                 },
-                Err(_) => assert!(false),
+                _ => panic!(),
             }
         }
         {
@@ -165,12 +156,9 @@ fn read_my_writes() {
             };
             let r = client.send(&content);
             let r = r.await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
-                    _ => assert!(false),
-                },
-                Err(_) => assert!(false),
+            match r.message {
+                Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
+                _ => panic!(),
             }
         }
         {
@@ -182,18 +170,15 @@ fn read_my_writes() {
             };
             let r = client.send(&content);
             let r = r.await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::Value {key, value} => {
-                        assert_eq!(key, insert_key);
-                        match value {
-                            Value::Tombstone {..} => assert!(true),
-                            _ => assert!(false),
-                        }
-                    },
-                    _ => assert!(false),
+            match r.message {
+                Response::Value {key, value} => {
+                    assert_eq!(key, insert_key);
+                    match value {
+                        Value::Tombstone {..} => assert!(true),
+                        _ => panic!(),
+                    }
                 },
-                Err(_) => assert!(false),
+                _ => panic!(),
             }
         }
     }
