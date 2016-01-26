@@ -27,7 +27,10 @@ impl Client {
         }
     }
 
-    pub fn with_timeouts(handlers: Vec<SocketAddrV4>, read_timeout: Duration, write_timeout: Duration) -> Client {
+    pub fn with_timeouts(handlers: Vec<SocketAddrV4>,
+                         read_timeout: Duration,
+                         write_timeout: Duration)
+                         -> Client {
         Client {
             handlers: handlers,
             read_timeout: Some(read_timeout),
@@ -49,7 +52,10 @@ impl Client {
     }
 
     /// Sends a message that can be binary encoded to the Storage Node at `target`.
-    pub fn send_to_node_with_timeout<T, K>(target: &SocketAddrV4, message: &T, timeout: Option<Duration>) -> Future<K, Error>
+    pub fn send_to_node_with_timeout<T, K>(target: &SocketAddrV4,
+                                           message: &T,
+                                           timeout: Option<Duration>)
+                                           -> Future<K, Error>
         where T: Debug + Encodable,
               K: Debug + Decodable + Send
     {
@@ -57,10 +63,10 @@ impl Client {
         match encode(&message, SizeLimit::Infinite) {
             Ok(content) => {
                 Self::send_buffer(target, content, timeout).and_then(|x| {
-                  match decode(&x) {
-                      Ok(m) => Ok(m),
-                      Err(_) => Err(Error::DecodeError),
-                  }
+                    match decode(&x) {
+                        Ok(m) => Ok(m),
+                        Err(_) => Err(Error::DecodeError),
+                    }
                 })
             }
             Err(_) => Future::error(Error::EncodeError),
@@ -68,7 +74,10 @@ impl Client {
     }
 
     /// Sends a binary encoded message to the Storage Node at `target`.
-    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>, timeout: Option<Duration>) -> Future<Vec<u8>, Error> {
+    pub fn send_buffer(target: &SocketAddrV4,
+                       message: Vec<u8>,
+                       timeout: Option<Duration>)
+                       -> Future<Vec<u8>, Error> {
         let target = target.to_owned();
         Future::lazy(move || {
             match TcpStream::connect(target) {

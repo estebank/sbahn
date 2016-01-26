@@ -22,35 +22,33 @@ fn get_now() -> u64 {
 }
 
 /// Obtain one (any) valid response from all the shard responses.
-fn read_one(key: &Key,
-            responses: Vec<Future<InternodeResponse, Error>>)
-            -> client::MessageResult {
+fn read_one(key: &Key, responses: Vec<Future<InternodeResponse, Error>>) -> client::MessageResult {
     debug!("Reading one");
 
 
-    Ok(sequence(responses).await()
-        .unwrap()
-        .iter()
-        .next()
-        .map(|&(ref m, _)| {
-            ResponseMessage {
-                message: m.clone().to_response(),
-                consistency: Consistency::One,
-            }
-        })
-        .unwrap_or(ResponseMessage {
-            message: Response::Error {
-                key: key.to_owned(),
-                message: "All the storage nodes replied with errors.".to_string(),
-            },
-            consistency: Consistency::One,
-        })
-    )
+    Ok(sequence(responses)
+           .await()
+           .unwrap()
+           .iter()
+           .next()
+           .map(|&(ref m, _)| {
+               ResponseMessage {
+                   message: m.clone().to_response(),
+                   consistency: Consistency::One,
+               }
+           })
+           .unwrap_or(ResponseMessage {
+               message: Response::Error {
+                   key: key.to_owned(),
+                   message: "All the storage nodes replied with errors.".to_string(),
+               },
+               consistency: Consistency::One,
+           }))
 }
 
 /// Obtain the newest `Value` among those stored in this shard's `StorageNode`s.
 fn read_latest(key: &Key,
-                responses: Vec<Future<InternodeResponse, Error>>)
+               responses: Vec<Future<InternodeResponse, Error>>)
                -> client::MessageResult {
     debug!("Reading quorum");
 
@@ -68,7 +66,7 @@ fn read_latest(key: &Key,
                                                             } else {
                                                                 (max_timestamp, max_response)
                                                             }
-                                                        },
+                                                        }
                                                         None => (max_timestamp, max_response),
                                                     }
                                                 })
