@@ -20,13 +20,13 @@ impl Client {
         Client { handlers: handlers }
     }
 
-    pub fn send(&self, message: &Request) -> Future<MessageResult, ()> {
+    pub fn send(&self, message: &Request) -> Future<ResponseMessage, Error> {
         let target = &self.handlers[0];
         Self::send_to_node(target, &message)
     }
 
     /// Sends a message that can be binary encoded to the Storage Node at `target`.
-    pub fn send_to_node<T, K>(target: &SocketAddrV4, message: &T) -> Future<Result<K>, ()>
+    pub fn send_to_node<T, K>(target: &SocketAddrV4, message: &T) -> Future<K, Error>
         where T: Debug + Encodable,
               K: Debug + Decodable + Send
     {
@@ -34,26 +34,21 @@ impl Client {
         debug!("sending message {:?} to node {:?}", message, target);
         match encode(&message, SizeLimit::Infinite) {
             Ok(content) => {
-                Self::send_buffer(target, content).map(|buffer| {
-                    match buffer {
-                        Ok(x) => {
-                            match decode(&x) {
-                                Ok(m) => Ok(m),
-                                Err(_) => Err(Error::DecodeError),
-                            }
-                        }
-                        Err(e) => Err(e),
-                    }
+                Self::send_buffer(target, content).and_then(|x| {
+                  match decode(&x) {
+                      Ok(m) => Ok(m),
+                      Err(_) => Err(Error::DecodeError),
+                  }
                 })
             }
-            Err(_) => Future::of(Err(Error::EncodeError)),
+            Err(_) => Future::error(Error::EncodeError),
         }
     }
 
     /// Sends a binary encoded message to the Storage Node at `target`.
-    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>) -> Future<Result<Vec<u8>>, ()> {
+    pub fn send_buffer(target: &SocketAddrV4, message: Vec<u8>) -> Future<Vec<u8>, Error> {
         let target = target.to_owned();
-        Future::spawn(move || {
+        Future::lazy(move || {
             match TcpStream::connect(target) {
                 Ok(stream) => {
                     let mut stream = stream;

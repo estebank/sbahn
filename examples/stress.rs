@@ -35,14 +35,14 @@ fn main() {
                     timestamp: 10000000,
                 },
             };
-            let r = client::Client::send_to_node(&addr, &content).await().unwrap();
+            let r = client::Client::send_to_node(&addr, &content).await();
             match r {
                 Ok(r) => match r {
                     InternodeResponse::WriteAck {key, timestamp} => {
                         assert_eq!(key, insert_key);
                         assert_eq!(timestamp, 10000000);
                     },
-                    _ => assert!(false),
+                    _ => panic!(),
                 },
                 Err(e) => println!("####{:?}", e),
             }

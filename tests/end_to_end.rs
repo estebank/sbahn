@@ -68,12 +68,9 @@ fn end_to_end() {
                 consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
-                    _ => assert!(false),
-                },
-                Err(_) => assert!(false),
+            match r.message {
+                Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
+                _ => panic!(),
             }
         }
         {
@@ -84,18 +81,15 @@ fn end_to_end() {
                 consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::Value {key, value} => {
-                        assert_eq!(key, insert_key);
-                        match value {
-                            Value::Value {content, ..} => assert_eq!(&content[..], &vec![1][..]),
-                            _ => assert!(false),
-                        }
-                    },
-                    _ => assert!(false),
+            match r.message {
+                Response::Value {key, value} => {
+                    assert_eq!(key, insert_key);
+                    match value {
+                        Value::Value {content, ..} => assert_eq!(&content[..], &vec![1][..]),
+                        _ => panic!(),
+                    }
                 },
-                Err(_) => assert!(false),
+                _ => panic!(),
             }
         }
         {
@@ -106,12 +100,9 @@ fn end_to_end() {
                 consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
-                    _ => assert!(false),
-                },
-                Err(_) => assert!(false),
+            match r.message {
+                Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
+                _ => panic!(),
             }
         }
         {
@@ -122,18 +113,15 @@ fn end_to_end() {
                 consistency: Consistency::Latest,
             };
             let r = client.send(&content).await().unwrap();
-            match r {
-                Ok(r) => match r.message {
-                    Response::Value {key, value} => {
-                        assert_eq!(key, insert_key);
-                        match value {
-                            Value::Tombstone {..} => assert!(true),
-                            _ => assert!(false),
-                        }
-                    },
-                    _ => assert!(false),
+            match r.message {
+                Response::Value {key, value} => {
+                    assert_eq!(key, insert_key);
+                    match value {
+                        Value::Tombstone {..} => assert!(true),
+                        _ => panic!(),
+                    }
                 },
-                Err(_) => assert!(false),
+                _ => panic!(),
             }
         }
     }
