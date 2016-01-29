@@ -64,25 +64,71 @@ fn setup_cluster() -> (SocketAddrV4, Vec<Vec<SocketAddrV4>>) {
     (setup_handler_node(&shards), shards)
 }
 
-#[test]
-fn read_consistency_one_all_nodes_available() {
-    // Should succeed
-    let (handler_addr, shards) = setup_cluster();
+fn write_to_storage_node(target: &SocketAddrV4, key: &Key, value: &Vec<u8>, timestamp: u64) {
+    let request = InternodeRequest::Write {
+        key: key.to_owned(),
+        value: Value::Value {
+            content: value.to_owned(),
+            timestamp: timestamp,
+        },
+    };
+    let r: Future<InternodeResponse, Error> = client::Client::send_to_node(target, &request);
+    let _ = r.await();
+}
 
-    let local_key = Key {
+fn key_and_value() -> (Key, Vec<u8>) {
+    let key = Key {
         dataset: vec![1, 2, 3],
         pkey: vec![4, 5, 6],
         lkey: vec![7, 8, 9],
     };
-    let local_value: Vec<u8> = vec![9, 8, 7];
+    let value: Vec<u8> = vec![9, 8, 7];
+    (key, value)
+}
+
+#[test]
+fn read_what_you_insert() {
+    let (handler_addr, _) = setup_cluster();
+    let (local_key, local_value) = key_and_value();
 
     let client = client::Client::new(vec![handler_addr]);
+    // Should succeed
     let r = client.insert(&local_key, &local_value);
     let r = r.await().unwrap();
     match r.message {
         Response::WriteAck {key, ..} => assert_eq!(key, local_key),
         _ => assert!(false),
     }
+    // Should succeed
+    let r = client.get(&local_key);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Value {key, value} => {
+            assert_eq!(key, local_key);
+            match value {
+                Value::Value {content, ..} => assert_eq!(content, local_value),
+                _ => assert!(false),
+            }
+        },
+        _ => assert!(false),
+    }
+}
+
+#[test]
+fn read_consistency_one_all_nodes_available() {
+    let (handler_addr, shards) = setup_cluster();
+    let (local_key, local_value) = key_and_value();
+
+    for shard in shards {
+        for node in shard {
+            write_to_storage_node(&node, &local_key, &local_value, 100000);
+        }
+    }
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::One);
+
+    // Should succeed
     let r = client.get(&local_key);
     let r = r.await().unwrap();
     match r.message {
@@ -99,7 +145,29 @@ fn read_consistency_one_all_nodes_available() {
 
 #[test]
 fn read_consistency_one_one_node_available() {
+    let (handler_addr, shards) = setup_cluster();
+    let (local_key, local_value) = key_and_value();
+
+    // Write to only one node (local_key corresponds to shard 2).
+    write_to_storage_node(&shards[2][0], &local_key, &local_value, 100000);
+
+    thread::sleep(Duration::from_millis(DELAY*3));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::One);
+
     // Should succeed
+    let r = client.get(&local_key);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Value {key, value} => {
+            assert_eq!(key, local_key);
+            match value {
+                Value::Value {content, ..} => assert_eq!(content, local_value),
+                _ => assert!(false),
+            }
+        },
+        _ => assert!(false),
+    }
 }
 
 #[test]
@@ -110,6 +178,31 @@ fn read_consistency_one_no_nodes_available() {
 #[test]
 fn read_consistency_latest_all_same() {
     // Should succeed
+    let (handler_addr, shards) = setup_cluster();
+    let (local_key, local_value) = key_and_value();
+
+    for shard in shards {
+        for node in shard {
+            write_to_storage_node(&node, &local_key, &local_value, 100000);
+        }
+    }
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
+
+    // Should succeed
+    let r = client.get(&local_key);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Value {key, value} => {
+            assert_eq!(key, local_key);
+            match value {
+                Value::Value {content, ..} => assert_eq!(content, local_value),
+                _ => assert!(false),
+            }
+        },
+        _ => assert!(false),
+    }
 }
 
 #[test]
@@ -120,6 +213,25 @@ fn read_consistency_latest_all_different() {
 #[test]
 fn read_consistency_latest_one_node_available() {
     // Should fail
+    let (handler_addr, shards) = setup_cluster();
+    let (local_key, local_value) = key_and_value();
+
+    // Write to only one node (local_key corresponds to shard 2).
+    write_to_storage_node(&shards[2][0], &local_key, &local_value, 100000);
+
+    thread::sleep(Duration::from_millis(DELAY*3));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
+
+    // Should succeed
+    let r = client.get(&local_key);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Error {key, message} => {
+            assert_eq!(key, local_key);
+        }
+        _ => assert!(false),
+    }
 }
 
 #[test]
@@ -155,6 +267,7 @@ fn write_consistency_latest_none_available() {
 #[test]
 fn single_node() {
     let addr = get_storage_node(0, 1);
+    let (insert_key, _) = key_and_value();
 
     let insert_key = Key {
         dataset: vec![1, 2, 3],
@@ -201,105 +314,6 @@ fn single_node() {
                 _ => panic!(),
             },
             Err(_) => panic!(),
-        }
-    }
-}
-
-#[test]
-fn read_my_writes() {
-    let mut shards: Vec<Vec<SocketAddrV4>> = vec![];
-    for i in 0..3 {
-        let mut shard: Vec<SocketAddrV4> = vec![];
-        for _ in 0..3 {
-            shard.push(get_storage_node(i, 3));
-        }
-        shards.push(shard);
-    }
-
-    let e = &shards;
-    let z = e.clone();
-    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), get_port());
-    thread::spawn(move || {
-        let _shards = &z.to_owned();
-        let _ = handler::listen(&addr, &_shards);
-    });
-    thread::sleep(Duration::from_millis(DELAY));  // Wait for handler node to start listening
-
-    {
-        let insert_key = Key {
-            dataset: vec![1, 2, 3],
-            pkey: vec![4, 5, 6],
-            lkey: vec![7, 8, 9],
-        };
-        let client = client::Client::new(vec![addr]);
-        {
-            let content = Request {
-                action: Action::Write {
-                    key: insert_key.to_owned(),
-                    content: vec![1],
-                },
-                consistency: Consistency::Latest,
-            };
-            let r = client.send(&content);
-            let r = r.await().unwrap();
-            match r.message {
-                Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
-                _ => panic!(),
-            }
-        }
-        {
-            let content = Request {
-                action: Action::Read {
-                    key: insert_key.to_owned(),
-                },
-                consistency: Consistency::Latest,
-            };
-            let r = client.send(&content);
-            let r = r.await().unwrap();
-            match r.message {
-                Response::Value {key, value} => {
-                    assert_eq!(key, insert_key);
-                    match value {
-                        Value::Value {content, ..} => assert_eq!(&content[..], &vec![1][..]),
-                        _ => panic!(),
-                    }
-                },
-                _ => panic!(),
-            }
-        }
-        {
-            let content = Request {
-                action: Action::Delete {
-                    key: insert_key.to_owned(),
-                },
-                consistency: Consistency::Latest,
-            };
-            let r = client.send(&content);
-            let r = r.await().unwrap();
-            match r.message {
-                Response::WriteAck {key, ..} => assert_eq!(key, insert_key),
-                _ => panic!(),
-            }
-        }
-        {
-            let content = Request {
-                action: Action::Read {
-                    key: insert_key.to_owned(),
-                },
-                consistency: Consistency::Latest,
-            };
-            let r = client.send(&content);
-            let r = r.await().unwrap();
-            match r.message {
-                Response::Value {key, value} => {
-                    assert_eq!(key, insert_key);
-                    match value {
-                        Value::Tombstone {..} => assert!(true),
-                        _ => panic!(),
-                    }
-                },
-                _ => panic!(),
-            }
         }
     }
 }

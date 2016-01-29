@@ -41,6 +41,15 @@ impl Client {
         }
     }
 
+    pub fn with_consistency(handlers: Vec<SocketAddrV4>, consistency: Consistency) -> Client {
+        Client {
+            handlers: handlers,
+            read_timeout: Some(Duration::from_millis(300)),
+            write_timeout: Some(Duration::from_millis(300)),
+            consistency: consistency,
+        }
+    }
+
     pub fn insert(&self, key: &Key, value: &Buffer) -> Future<ResponseMessage, Error> {
         let content = Request {
             action: Action::Write {
@@ -54,9 +63,7 @@ impl Client {
 
     pub fn get(&self, key: &Key) -> Future<ResponseMessage, Error> {
         let content = Request {
-            action: Action::Read {
-                key: key.to_owned(),
-            },
+            action: Action::Read { key: key.to_owned() },
             consistency: self.consistency.clone(),
         };
         self.send(&content)
