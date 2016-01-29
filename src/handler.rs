@@ -50,47 +50,60 @@ fn read_one(key: &Key, responses: Vec<Future<InternodeResponse, Error>>) -> clie
 fn read_latest(key: &Key,
                responses: Vec<Future<InternodeResponse, Error>>)
                -> client::MessageResult {
-    debug!("Reading quorum");
-
-    let latest: Option<InternodeResponse> = sequence(responses)
-                                                .reduce((0, None), |last, r| {
-                                                    let (max_timestamp, max_response) = last;
-                                                    debug!("Max timestamp so far: {:?}",
-                                                           max_timestamp);
-                                                    debug!("Max max_response so far: {:?}",
-                                                           max_response);
-                                                    match r.get_timestamp() {
-                                                        Some(ts) => {
-                                                            if ts >= max_timestamp {
-                                                                (ts, Some(r.clone()))
-                                                            } else {
-                                                                (max_timestamp, max_response)
-                                                            }
-                                                        }
-                                                        None => (max_timestamp, max_response),
-                                                    }
-                                                })
-                                                .await()
-                                                .unwrap()
-                                                .1;
+    debug!("Reading latest");
+    let responses_needed = responses.len() / 2;
+    let ((_, success_count), latest) =
+        sequence(responses)
+            .reduce(((0, 0), None), |last, r| {
+                let ((max_timestamp, success_count), max_response) = last;
+                debug!("Max timestamp so far: {:?}", max_timestamp);
+                debug!("Max max_response so far: {:?}", max_response);
+                match r.get_timestamp() {
+                    Some(ts) => {
+                        if ts >= max_timestamp {
+                            ((ts, success_count + 1), Some(r.clone()))
+                        } else {
+                            ((max_timestamp, success_count + 1), max_response)
+                        }
+                    }
+                    None => ((max_timestamp, success_count), max_response),
+                }
+            })
+            .await()
+            .unwrap();
 
     debug!("Quorum read final response: {:?}", latest);
+    debug!("Nodes responed successfully: {:?}", success_count);
+    debug!("Nodes needed for succesfull read: {:?}", responses_needed);
 
-    match latest {
-        Some(m) => {
-            Ok(ResponseMessage {
-                message: m.to_response(),
-                consistency: Consistency::Latest,
-            })
-        }
-        None => {
-            Ok(ResponseMessage {
-                message: Response::Error {
-                    key: key.to_owned(),
-                    message: "?".to_string(),
-                },
-                consistency: Consistency::Latest,
-            })
+    if success_count <= responses_needed {
+        info!("Not enough storage nodes succeeded: {:?} of at least {:?}",
+              success_count,
+              responses_needed);
+        Ok(ResponseMessage {
+            message: Response::Error {
+                key: key.to_owned(),
+                message: "Not enough storage nodes succeeded to give a response".to_string(),
+            },
+            consistency: Consistency::Latest,
+        })
+    } else {
+        match latest {
+            Some(m) => {
+                Ok(ResponseMessage {
+                    message: m.to_response(),
+                    consistency: Consistency::Latest,
+                })
+            }
+            None => {
+                Ok(ResponseMessage {
+                    message: Response::Error {
+                        key: key.to_owned(),
+                        message: "?".to_string(),
+                    },
+                    consistency: Consistency::Latest,
+                })
+            }
         }
     }
 }
