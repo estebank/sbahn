@@ -275,23 +275,26 @@ pub fn listen(address: &SocketAddrV4, shards: &Vec<Vec<SocketAddrV4>>) -> Future
     let write_timeout = Some(Duration::from_millis(300));
 
     Future::spawn(move || {
-        let listener = TcpListener::bind(&address).unwrap();
-
-        // Accept connections and process them, spawning a new thread for each one.
-        for stream in listener.incoming() {
-            let shards = shards.to_owned();
-            match stream {
-                Ok(stream) => {
-                    let _ = stream.set_read_timeout(read_timeout);
-                    let _ = stream.set_write_timeout(write_timeout);
-                    thread::spawn(move || {
-                        // connection succeeded
-                        let mut stream = stream;
-                        stream.handle(&shards);
-                    });
+        match TcpListener::bind(&address) {
+            Ok(listener) => {
+                // Accept connections and process them, spawning a new thread for each one.
+                for stream in listener.incoming() {
+                    let shards = shards.to_owned();
+                    match stream {
+                        Ok(stream) => {
+                            let _ = stream.set_read_timeout(read_timeout);
+                            let _ = stream.set_write_timeout(write_timeout);
+                            thread::spawn(move || {
+                                // connection succeeded
+                                let mut stream = stream;
+                                stream.handle(&shards);
+                            });
+                        }
+                        Err(e) => error!("Connection failed!: {:?}", e),
+                    }
                 }
-                Err(e) => error!("Connection failed!: {:?}", e),
             }
+            Err(e) => error!("Could not bind handler to {:?}: {:?}", address, e),
         }
     })
 }
