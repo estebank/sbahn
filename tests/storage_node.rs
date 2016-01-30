@@ -12,7 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 // Milis to wait before trying to connect to any node.
-static DELAY: u64 = 50;
+static DELAY: u64 = 100;
 
 static mut PORT: u16 = 1100;
 /// Obtain an open port
@@ -252,7 +252,6 @@ fn read_consistency_latest_all_different() {
 
 #[test]
 fn read_consistency_latest_one_node_available() {
-    // Should fail
     let (handler_addr, shards) = setup_cluster();
     let (local_key, local_value) = key_and_value();
 
@@ -263,7 +262,7 @@ fn read_consistency_latest_one_node_available() {
 
     let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
 
-    // Should succeed
+    // Should fail
     let r = client.get(&local_key);
     let r = r.await().unwrap();
     match r.message {
@@ -276,7 +275,6 @@ fn read_consistency_latest_one_node_available() {
 
 #[test]
 fn write_consistency_one_all_available() {
-    // Should succeed
     let (handler_addr, _) = setup_cluster();
     let (local_key, local_value) = key_and_value();
 
@@ -298,7 +296,6 @@ fn write_consistency_one_all_available() {
 
 #[test]
 fn write_consistency_one_none_available() {
-    // Should fail
     let (handler_addr, _) = setup_bad_cluster(3);
     let (local_key, local_value) = key_and_value();
 
@@ -306,15 +303,18 @@ fn write_consistency_one_none_available() {
 
     let client = client::Client::with_consistency(vec![handler_addr], Consistency::One);
 
-    // Should succeed
-    let r = client.insert(&local_key, &local_value);
-    let r = r.await().unwrap();
-    match r.message {
-        Response::Error {key, message} => {
-            assert_eq!(key, local_key);
-            assert_eq!("Quorum write could not be accomplished.".to_string(), message);
-        },
-        _ => assert!(false),
+    // Should fail
+    match client.insert(&local_key, &local_value).await() {
+        Ok(r) => {
+            match r.message {
+                Response::Error {key, message} => {
+                    assert_eq!(key, local_key);
+                    assert_eq!("Quorum write could not be accomplished.".to_string(), message);
+                },
+                _ => assert!(false),
+            }
+        }
+        Err(_) => assert!(true),
     }
 }
 
@@ -392,14 +392,17 @@ fn write_consistency_latest_none_available() {
     let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
 
     // Should fail
-    let r = client.insert(&local_key, &local_value);
-    let r = r.await().unwrap();
-    match r.message {
-        Response::Error {key, message} => {
-            assert_eq!(local_key, key);
-            assert_eq!("Quorum write could not be accomplished.".to_string(), message);
+    match client.insert(&local_key, &local_value).await() {
+        Ok(r) => {
+            match r.message {
+                Response::Error {key, message} => {
+                    assert_eq!(local_key, key);
+                    assert_eq!("Quorum write could not be accomplished.".to_string(), message);
+                }
+                _ => assert!(false),
+            }
         }
-        _ => assert!(false),
+        Err(_) => assert!(true),
     }
 }
 
