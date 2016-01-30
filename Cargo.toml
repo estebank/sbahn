@@ -4,9 +4,9 @@ version = "0.1.0"
 authors = ["Esteban Küber <esteban@kuber.com.ar>"]
 
 [dependencies]
-bincode = "*"
-env_logger = "*"
-eventual = "*"
-log = "*"
-rustc-serialize = "*"
-time = "*"
+bincode = "0.4.0"
+env_logger = "0.3.2"
+eventual = "0.1.5"
+log = "0.3.4"
+rustc-serialize = "0.3.16"
+time = "0.1.34"
