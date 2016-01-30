@@ -12,7 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 // Milis to wait before trying to connect to any node.
-static DELAY: u64 = 20;
+static DELAY: u64 = 50;
 
 static mut PORT: u16 = 1100;
 /// Obtain an open port
@@ -51,11 +51,56 @@ fn setup_handler_node(shards: &Vec<Vec<SocketAddrV4>>) -> SocketAddrV4 {
     addr
 }
 
+/// Listen on `address` for incoming client requests, and do nothing.
+pub fn dead_node(address: &SocketAddrV4) -> Future<(), ()> {
+    let address = address.to_owned();
+
+    let read_timeout = Some(Duration::from_millis(300));
+    let write_timeout = Some(Duration::from_millis(300));
+
+    Future::spawn(move || {
+        match TcpListener::bind(&address) {
+            Ok(listener) => {
+                // Accept connections and process them, spawning a new thread for each one.
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(stream) => {
+                            let _ = stream.set_read_timeout(read_timeout);
+                            let _ = stream.set_write_timeout(write_timeout);
+                            thread::spawn(|| {
+                                thread::sleep(Duration::from_millis(500));
+                            });
+                        }
+                        Err(e) => panic!("Connection failed!: {:?}", e),
+                    }
+                }
+            }
+            Err(e) => panic!("Error while binding to {:?}: {:?}", address, e),
+        }
+    })
+}
+
+fn get_dead_storage_node() -> SocketAddrV4 {
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), get_port());
+    thread::spawn(move || {
+        let _ = dead_node(&addr);
+    });
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+    addr
+}
+
 fn setup_cluster() -> (SocketAddrV4, Vec<Vec<SocketAddrV4>>) {
+    setup_bad_cluster(0)
+}
+
+fn setup_bad_cluster(bad_nodes: u32) -> (SocketAddrV4, Vec<Vec<SocketAddrV4>>) {
     let mut shards: Vec<Vec<SocketAddrV4>> = vec![];
     for i in 0..3 {
         let mut shard: Vec<SocketAddrV4> = vec![];
-        for _ in 0..3 {
+        for _ in 0..bad_nodes {
+            shard.push(get_dead_storage_node());
+        }
+        for _ in bad_nodes..3 {
             shard.push(get_storage_node(i, 3));
         }
         shards.push(shard);
@@ -171,11 +216,6 @@ fn read_consistency_one_one_node_available() {
 }
 
 #[test]
-fn read_consistency_one_no_nodes_available() {
-    // Should fail
-}
-
-#[test]
 fn read_consistency_latest_all_same() {
     // Should succeed
     let (handler_addr, shards) = setup_cluster();
@@ -227,7 +267,7 @@ fn read_consistency_latest_one_node_available() {
     let r = client.get(&local_key);
     let r = r.await().unwrap();
     match r.message {
-        Response::Error {key, message} => {
+        Response::Error {key, ..} => {
             assert_eq!(key, local_key);
         }
         _ => assert!(false),
@@ -237,31 +277,130 @@ fn read_consistency_latest_one_node_available() {
 #[test]
 fn write_consistency_one_all_available() {
     // Should succeed
+    let (handler_addr, _) = setup_cluster();
+    let (local_key, local_value) = key_and_value();
+
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
+
+    // Should succeed
+    let r = client.insert(&local_key, &local_value);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::WriteAck {key, timestamp} => {
+            assert_eq!(key, local_key);
+            assert!(timestamp > 0);
+        },
+        _ => assert!(false),
+    }
 }
 
 #[test]
 fn write_consistency_one_none_available() {
     // Should fail
+    let (handler_addr, _) = setup_bad_cluster(3);
+    let (local_key, local_value) = key_and_value();
+
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::One);
+
+    // Should succeed
+    let r = client.insert(&local_key, &local_value);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Error {key, message} => {
+            assert_eq!(key, local_key);
+            assert_eq!("Quorum write could not be accomplished.".to_string(), message);
+        },
+        _ => assert!(false),
+    }
 }
 
 #[test]
 fn write_consistency_latest_all_available() {
+    let (handler_addr, _) = setup_cluster();
+    let (local_key, local_value) = key_and_value();
+
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
+
     // Should succeed
+    let r = client.insert(&local_key, &local_value);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::WriteAck {key, timestamp} => {
+            assert_eq!(key, local_key);
+            assert!(timestamp > 0);
+        },
+        _ => assert!(false),
+    }
 }
 
 #[test]
 fn write_consistency_latest_quorum_available() {
+    let (handler_addr, _) = setup_bad_cluster(1);
+    let (local_key, local_value) = key_and_value();
+
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
+
     // Should succeed
+    let r = client.insert(&local_key, &local_value);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::WriteAck {key, timestamp} => {
+            assert_eq!(key, local_key);
+            assert!(timestamp > 0);
+        },
+        _ => assert!(false),
+    }
 }
 
 #[test]
 fn write_consistency_latest_one_available() {
+    let (handler_addr, _) = setup_bad_cluster(2);
+    let (local_key, local_value) = key_and_value();
+
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
+
     // Should fail
+    let r = client.insert(&local_key, &local_value);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Error {key, message} => {
+            assert_eq!(local_key, key);
+            assert_eq!("Quorum write could not be accomplished.".to_string(), message);
+        }
+        _ => assert!(false),
+    }
 }
 
 #[test]
 fn write_consistency_latest_none_available() {
     // Should fail
+    let (handler_addr, _) = setup_bad_cluster(3);
+    let (local_key, local_value) = key_and_value();
+
+    thread::sleep(Duration::from_millis(DELAY));  // Wait for storage node to start listening
+
+    let client = client::Client::with_consistency(vec![handler_addr], Consistency::Latest);
+
+    // Should fail
+    let r = client.insert(&local_key, &local_value);
+    let r = r.await().unwrap();
+    match r.message {
+        Response::Error {key, message} => {
+            assert_eq!(local_key, key);
+            assert_eq!("Quorum write could not be accomplished.".to_string(), message);
+        }
+        _ => assert!(false),
+    }
 }
 
 #[test]
@@ -269,11 +408,6 @@ fn single_node() {
     let addr = get_storage_node(0, 1);
     let (insert_key, _) = key_and_value();
 
-    let insert_key = Key {
-        dataset: vec![1, 2, 3],
-        pkey: vec![4, 5, 6],
-        lkey: vec![7, 8, 9],
-    };
     {
         let content = InternodeRequest::Write {
             key: insert_key.to_owned(),
