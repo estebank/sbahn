@@ -182,7 +182,8 @@ fn read_from_other_storage_node(target: &SocketAddrV4,
            key,
            target);
     let content = InternodeRequest::Read { key: key.to_owned() };
-    client::Client::send_to_node(target, &content)
+    let timeout = Some(Duration::from_millis(300));
+    client::Client::send_to_node_with_timeout(target, &content, timeout)
 }
 
 fn write_to_other_storage_node(target: &SocketAddrV4,
@@ -196,7 +197,9 @@ fn write_to_other_storage_node(target: &SocketAddrV4,
         key: key.to_owned(),
         value: value.to_owned(),
     };
-    client::Client::send_to_node(target, &request)
+
+    let timeout = Some(Duration::from_millis(300));
+    client::Client::send_to_node_with_timeout(target, &request, timeout)
 }
 
 /// Perform a client's `Request` in the appropriate shard and respond to the
